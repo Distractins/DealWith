@@ -1,0 +1,61 @@
+# ============================================================
+# 融合策略对比消融实验配置
+# 对比9种多模态融合策略的预后预测性能
+# ============================================================
+
+experiment:
+  name: "ablation_fusion_comparison"
+  description: "9种融合策略横向对比实验"
+
+# 实验变体列表
+ablations:
+  - name: "baseline_concat"
+    fusion_type: "concat"
+    description: "简单拼接融合基线"
+
+  - name: "baseline_pofusion"
+    fusion_type: "pofusion"
+    description: "门控双线性外积融合"
+
+  - name: "baseline_lmf"
+    fusion_type: "lmf"
+    description: "低秩多模态融合(rank=4)"
+
+  - name: "baseline_gmu"
+    fusion_type: "gmu"
+    description: "门控多模态单元"
+
+  - name: "baseline_film"
+    fusion_type: "film"
+    description: "特征线性调制融合"
+
+  - name: "proposed_caugf"
+    fusion_type: "caugf"
+    description: "VectorCAUGF三流自适应融合 ★核心创新"
+
+  - name: "new_attention_weighted"
+    fusion_type: "attention_weighted"
+    description: "注意力加权融合 ★新增"
+
+  - name: "new_cross_attention"
+    fusion_type: "cross_attention"
+    description: "交叉注意力多模态融合 ★新增"
+
+  - name: "new_tensor_concat"
+    fusion_type: "tensor_concat"
+    description: "多层级特征图拼接融合 ★新增"
+
+# 固定参数（所有变体共用）
+training:
+  batch_size: 4
+  gradient_accumulation_steps: 2
+  optimizer:
+    lr: 0.0001
+  scheduler:
+    n_epochs: 8
+    n_epochs_decay: 4
+
+# 评估指标
+evaluation:
+  primary_metric: "c_index"
+  secondary_metrics: ["time_dependent_auc", "log_rank_pvalue", "hazard_ratio"]

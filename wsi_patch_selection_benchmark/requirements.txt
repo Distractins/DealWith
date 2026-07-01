@@ -1,0 +1,25 @@
+# WSI Patch Selection Benchmark - Dependencies
+# Install: pip install -r requirements.txt
+
+# WSI reading
+openslide-python>=1.3.0
+
+# Image processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Numerical computing
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Data handling
+pandas>=2.0.0
+
+# Configuration
+pyyaml>=6.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Visualization
+matplotlib>=3.7.0

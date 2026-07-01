@@ -1,0 +1,62 @@
+# ============================================================
+# 图像预处理消融实验配置
+# 逐项评估去噪/增强/归一化对低质量图像的影响
+# ============================================================
+
+experiment:
+  name: "ablation_preprocessing"
+  description: "图像预处理模块消融实验"
+
+ablations:
+  - name: "no_preprocessing"
+    image_preprocessing:
+      enabled: false
+    description: "无预处理基线"
+
+  - name: "denoise_only"
+    image_preprocessing:
+      enabled: true
+      denoise:
+        method: "gaussian"
+      contrast:
+        method: "none"
+      color_normalization:
+        method: "none"
+    description: "仅高斯去噪"
+
+  - name: "contrast_only"
+    image_preprocessing:
+      enabled: true
+      denoise:
+        method: "none"
+      contrast:
+        method: "clahe"
+      color_normalization:
+        method: "none"
+    description: "仅CLAHE对比度增强"
+
+  - name: "color_norm_only"
+    image_preprocessing:
+      enabled: true
+      denoise:
+        method: "none"
+      contrast:
+        method: "none"
+      color_normalization:
+        method: "reinhard"
+    description: "仅Reinhard颜色归一化"
+
+  - name: "full_preprocessing"
+    image_preprocessing:
+      enabled: true
+      denoise:
+        method: "gaussian"
+      contrast:
+        method: "clahe"
+      color_normalization:
+        method: "reinhard"
+    description: "完整预处理流水线"
+
+model:
+  fusion:
+    type: "caugf"

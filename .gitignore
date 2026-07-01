@@ -1,0 +1,78 @@
+# ============================================================
+# DealWith 整体项目 Git忽略规则
+# 包含: wsi_patch_selection_benchmark (上游WSI切块)
+#       yu_hou_prognosis (下游多模态预后预测)
+#
+# 仅上传代码与配置，不上传大文件
+# ============================================================
+
+# ---- Python编译缓存 ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+
+# ---- 虚拟环境 ----
+venv/
+.venv/
+env/
+.env
+*.env
+
+# ---- IDE配置 ----
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# ---- 上游WSI输出 (patch图像29GB+) ----
+wsi_patch_selection_benchmark/outputs/*
+!wsi_patch_selection_benchmark/outputs/.gitkeep
+
+# ---- 上游日志 ----
+wsi_patch_selection_benchmark/logs/
+*.log
+
+# ---- 下游模型权重 (700MB+) ----
+yu_hou_prognosis/weights/*
+!yu_hou_prognosis/weights/.gitkeep
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pb
+*.onnx
+
+# ---- 下游数据集 (80MB+) ----
+yu_hou_prognosis/data/*
+!yu_hou_prognosis/data/.gitkeep
+!yu_hou_prognosis/data/TCGA_COAD/.gitkeep
+
+# ---- 实验输出 ----
+experiments/
+outputs/
+runs/
+checkpoints/
+ckpt/
+
+# ---- 训练检查点/预测pkl ----
+*.pkl
+
+# ---- 系统文件 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+*.ipynb
+
+# ---- OS杂项 ----
+*.tmp
+*.temp
+*.bak

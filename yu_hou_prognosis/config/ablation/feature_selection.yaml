@@ -1,0 +1,48 @@
+# ============================================================
+# 特征选择消融实验配置
+# 评估降维对小样本+高维特征过拟合问题的缓解效果
+# ============================================================
+
+experiment:
+  name: "ablation_feature_selection"
+  description: "基因组特征选择消融实验"
+
+ablations:
+  - name: "no_selection"
+    feature_selection:
+      method: "none"
+      n_features_final: 356
+    description: "无特征选择 (原始356维)"
+
+  - name: "variance_filter"
+    feature_selection:
+      method: "variance_threshold"
+      variance_threshold: 0.01
+      n_features_final: 200
+    description: "方差阈值过滤 (~200维)"
+
+  - name: "mutual_info_100"
+    feature_selection:
+      method: "mutual_info"
+      n_features_mi: 100
+      n_features_final: 100
+    description: "互信息选择Top-100"
+
+  - name: "pca_50"
+    feature_selection:
+      method: "pca"
+      pca_variance_ratio: 0.95
+    description: "PCA降维 (~50维)"
+
+  - name: "pipeline_full"
+    feature_selection:
+      method: "pipeline"
+      variance_threshold: 0.01
+      n_features_mi: 200
+      pca_variance_ratio: 0.95
+      n_features_final: 50
+    description: "完整管线: VT->MI->PCA"
+
+model:
+  fusion:
+    type: "caugf"

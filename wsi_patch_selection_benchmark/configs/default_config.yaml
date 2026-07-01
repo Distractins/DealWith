@@ -1,0 +1,101 @@
+# ============================================================
+# WSI Patch Selection Benchmark - Default Configuration
+# ============================================================
+# Copy this file and edit paths for your environment.
+# CLI arguments override values in this file.
+
+# ---------------------------------------------------------------------------
+# Paths (REQUIRED: edit before running)
+# ---------------------------------------------------------------------------
+wsi_root: "F:/TCGA_COAD_WSI"          # Root directory with .svs files
+output_root: "outputs"                       # All outputs go here (relative or absolute)
+
+# ---------------------------------------------------------------------------
+# WSI filtering
+# ---------------------------------------------------------------------------
+only_dx1: true                               # Only process DX1 (diagnostic) slides
+
+# ---------------------------------------------------------------------------
+# Patch extraction parameters
+# ---------------------------------------------------------------------------
+patch_size: 1024                             # Square patch side length in pixels
+patches_per_case: 6                          # K: target patches per patient case
+stride: 1024                                 # Grid stride for candidate scanning
+ds_mask: 32                                  # Downsample factor for tissue mask
+
+# ---------------------------------------------------------------------------
+# Candidate pool parameters
+# ---------------------------------------------------------------------------
+preselect_topk: 96                           # Top candidates by tissue ratio to read
+min_tissue_ratio_preselect: 0.35             # Minimum tissue ratio for preselection
+candidate_pool_size: 72                      # Target candidate pool size per slide
+max_tries: 5000                              # Max random sampling attempts
+
+# ---------------------------------------------------------------------------
+# Scoring parameters
+# ---------------------------------------------------------------------------
+innovation_weight: 0.25                      # Weight of innovation score in final_score
+enable_gland_irregularity: true              # Compute gland irregularity metric
+
+# ---------------------------------------------------------------------------
+# Diversity parameters
+# ---------------------------------------------------------------------------
+min_center_distance_ratio: 0.65              # Spatial diversity: min_dist = ratio * patch_size
+min_feature_distance: 0.10                   # Feature-space diversity threshold
+
+# ---------------------------------------------------------------------------
+# Random seed
+# ---------------------------------------------------------------------------
+seed: 2025                                   # Global random seed for reproducibility
+
+# ---------------------------------------------------------------------------
+# Algorithms to run (comment out to disable)
+# ---------------------------------------------------------------------------
+enabled_samplers:
+  - random
+  - grid
+  - largest_tissue
+  - stratified
+  - kmeans
+  - yottixel
+  - splice
+  - sdm
+  - sentinel
+
+# ---------------------------------------------------------------------------
+# Algorithm-specific parameters
+# ---------------------------------------------------------------------------
+stratified:
+  n_bins_x: 3                                # Spatial bins in X direction
+  n_bins_y: 3                                # Spatial bins in Y direction
+
+splice:
+  redundancy_lambda: 2.0                     # Penalty weight for feature redundancy
+
+yottixel:
+  color_clusters: 8                          # Number of color clusters (k-means)
+  spatial_ratio_per_cluster: 0.25            # Fraction of patches for spatial sub-clustering
+  max_total_candidates: 400                  # Max candidates after mosaic
+
+sdm:
+  morphology_seed_quality_weight: 0.25       # Quality weight in seed selection
+  quality_tumor_weight: 0.45                 # Tumor morphology weight in group selection
+
+# ---------------------------------------------------------------------------
+# Visualization
+# ---------------------------------------------------------------------------
+visualization:
+  enabled: true
+  figures_dir: "figures"
+  dpi: 300
+  formats:
+    - png
+    - pdf
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  level: "INFO"
+  file: "logs/benchmark.log"
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

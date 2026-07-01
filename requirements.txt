@@ -1,0 +1,41 @@
+# ============================================================
+# DealWith 统一环境依赖 (上下流共用)
+# 安装方式: pip install -r requirements.txt
+#
+# 注意: torch/torchvision 请根据CUDA版本单独安装！
+# CUDA 12.1 (4080 Super):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# ============================================================
+
+# ---- PyTorch (先手动装) ----
+torch>=2.0.0,<2.6.0
+torchvision>=0.15.0,<0.21.0
+
+# ---- 数据处理与科学计算 ----
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# ---- 图像处理 ----
+opencv-python>=4.8.0
+Pillow>=10.0.0
+openslide-python>=1.3.0
+
+# ---- 生存分析 (下游) ----
+lifelines>=0.27.0
+scikit-survival>=0.20.0
+
+# ---- 可视化 ----
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# ---- 配置管理 ----
+PyYAML>=6.0
+
+# ---- 训练工具 ----
+tqdm>=4.65.0
+tensorboard>=2.12.0
+
+# ---- 系统监控 ----
+psutil>=5.9.0
