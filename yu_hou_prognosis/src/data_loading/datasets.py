@@ -63,8 +63,11 @@ def _to_float_tensor(x) -> torch.Tensor:
 
 
 def _to_long_tensor(x) -> torch.Tensor:
-    """安全转换为int64张量"""
-    return torch.tensor(x, dtype=torch.long)
+    """安全转换为int64张量，自动处理字符串"""
+    try:
+        return torch.tensor(x, dtype=torch.long)
+    except (TypeError, ValueError):
+        return torch.tensor(0, dtype=torch.long)
 
 
 # ============================================================

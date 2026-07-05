@@ -952,6 +952,14 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
         logger.info(f"  [数据] 验证样本: {len(val_loader.dataset)}, "
                     f"批次: {len(val_loader)}")
 
+    # ---- 自动检测实际特征维度（适配不同CSV） ----
+    if "train" in data and "x_omic" in data["train"]:
+        actual_omic_dim = data["train"]["x_omic"].shape[1]
+        if actual_omic_dim != config.model.omic.input_dim:
+            logger.info(f"  [维度适配] 基因组特征维度: {config.model.omic.input_dim} -> {actual_omic_dim}")
+            config.model.omic.input_dim = actual_omic_dim
+            config.data.genomic.input_dim = actual_omic_dim
+
     # ---- 构建模型 ----
     model = PathomicNet(config)
     model = model.to(device)
