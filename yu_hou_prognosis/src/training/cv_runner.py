@@ -36,9 +36,14 @@ import numpy as np
 import torch
 import psutil  # CPU/RAM监控
 
+import pandas as pd
+import numpy as np
+from collections import defaultdict
+
 from src.utils.seed import set_seed
 from src.utils.logger import setup_logger, log_section
 from src.training.trainer import train, test, MetricLogger
+from src.data_loading.upstream_reader import UpstreamPatchReader
 
 
 # ============================================================
@@ -136,10 +141,148 @@ def _log_system_info(logger: logging.Logger, sys_info: Dict[str, Any]) -> None:
 
 
 # ============================================================
-# 数据划分加载
+# 数据划分加载 + 自动构建
 # ============================================================
 
-def _load_data_splits(config) -> Dict[str, Any]:
+def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
+    """
+    当pkl仅包含病人ID划分时，自动扫描上游patch和基因组CSV，
+    构建完整的 x_path/x_omic/e/t/g 数据划分。
+    """
+    logger.info("检测到pkl仅含病人ID，自动构建完整数据划分...")
+
+    # ---- 读取基因组CSV ----
+    csv_path = config.resolve_path(config.data.genomic_csv)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"基因组CSV不存在: {csv_path}")
+    df = pd.read_csv(csv_path)
+    logger.info(f"  基因组CSV: {len(df)} 个样本")
+
+    # CSV列名
+    patient_id_col = "TCGA ID"
+    event_col = "event"
+    time_col = "Survival months"
+
+    # 过滤数值特征列
+    exclude_patterns = [
+        "tcga", "id", "indexes", "event", "censored", "survival",
+        "vital_status", "survival_source", "tumor_grade", "tumor_stage",
+        "histological_type", "suspicious", "gender", "age_at_diagnosis",
+        "codeletion", "idh mutation",
+    ]
+    feature_cols = []
+    for c in df.columns:
+        cl = c.lower()
+        if any(p in cl for p in exclude_patterns):
+            continue
+        if df[c].dtype in (np.float64, np.float32, np.int64, np.int32):
+            feature_cols.append(c)
+    logger.info(f"  基因组特征维度: {len(feature_cols)}")
+
+    # 更新配置
+    if len(feature_cols) != config.data.genomic.input_dim:
+        logger.info(f"  维度适配: {config.data.genomic.input_dim} -> {len(feature_cols)}")
+        config.data.genomic.input_dim = len(feature_cols)
+        config.model.omic.input_dim = len(feature_cols)
+
+    # 构建病人ID → 基因组特征映射
+    genomic_map = {}
+    survival_map = {}
+    for _, row in df.iterrows():
+        pid = str(row[patient_id_col]).strip()
+        genomic_map[pid] = row[feature_cols].values.astype(np.float32)
+        survival_map[pid] = {
+            "e": float(row[event_col]),
+            "t": float(row[time_col]),
+            "g": 0,
+        }
+    logger.info(f"  基因组映射: {len(genomic_map)} 个病人")
+
+    # ---- 扫描patch目录 ----
+    reader = UpstreamPatchReader(config)
+    patch_dir = reader.get_patch_dir()
+    patch_map = {}  # slide_id → [patch_paths]
+    if patch_dir.exists():
+        png_files = sorted(patch_dir.glob("*.png"))
+        logger.info(f"  扫描patch: {len(png_files)} 个PNG文件")
+        slide_patches = defaultdict(list)
+        for pf in png_files:
+            sid = reader.parse_slide_id(pf.name)
+            if sid:
+                slide_patches[sid].append(str(pf.resolve()))
+        num_p = config.upstream.num_patches_per_patient
+        for sid, patches in slide_patches.items():
+            if len(patches) >= num_p:
+                patch_map[sid] = sorted(patches)[:num_p]
+        logger.info(f"  合格slide: {len(patch_map)} 个 (patch≥{num_p})")
+    else:
+        logger.warning(f"  patch目录不存在: {patch_dir}")
+
+    # 短ID → 长slide ID 映射
+    short_to_single = {}
+    for slide_id in patch_map:
+        parts = slide_id.split("-")
+        if len(parts) >= 3:
+            short_id = "-".join(parts[:3])
+            if short_id not in short_to_single:
+                short_to_single[short_id] = slide_id
+    logger.info(f"  短ID→长slide映射: {len(short_to_single)} 个")
+
+    # ---- 构建每折完整数据 ----
+    output_folds = {}
+    total_missing = 0
+    for fold_id in sorted(id_splits.keys()):
+        fold_data = id_splits[fold_id]
+        fold_key = f"fold_{fold_id}" if isinstance(fold_id, int) else str(fold_id)
+        output_folds[fold_key] = {}
+
+        for split_name in ["train", "test"]:
+            if split_name not in fold_data:
+                continue
+            patient_ids = fold_data[split_name].get("patient_ids", [])
+
+            x_path_list, x_omic_list, e_list, t_list, g_list = [], [], [], [], []
+            fold_missing = 0
+
+            for pid in patient_ids:
+                pid = str(pid).strip()
+                if pid not in genomic_map:
+                    fold_missing += 1; continue
+                patches = patch_map.get(short_to_single.get(pid, ""), [])
+                if len(patches) < config.upstream.num_patches_per_patient:
+                    fold_missing += 1; continue
+
+                x_omic_list.append(genomic_map[pid])
+                s = survival_map[pid]
+                e_list.append(s["e"]); t_list.append(s["t"]); g_list.append(s["g"])
+                x_path_list.append(patches)
+
+            n = len(x_omic_list)
+            output_folds[fold_key][split_name] = {
+                "x_path": x_path_list,
+                "x_omic": np.array(x_omic_list, dtype=np.float32) if x_omic_list else np.array([]),
+                "e": np.array(e_list, dtype=np.float32) if e_list else np.array([]),
+                "t": np.array(t_list, dtype=np.float32) if t_list else np.array([]),
+                "g": g_list,
+            }
+            logger.info(f"  {fold_key}/{split_name}: {n}病人 (跳过{fold_missing})")
+            total_missing += fold_missing
+
+    logger.info(f"  总跳过(缺数据): {total_missing}")
+
+    # 保存完整pkl，下次直接加载
+    output_path = config.resolve_path(config.data.split_file)
+    if output_path.exists():
+        bak = output_path.with_suffix(".pkl.bak")
+        output_path.rename(bak)
+    with open(output_path, "wb") as f:
+        pickle.dump(output_folds, f, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.info(f"  完整数据pkl已保存: {output_path}")
+
+    return output_folds
+
+
+def _load_data_splits(config, logger=None) -> Dict[str, Any]:
     """
     从pickle文件加载交叉验证数据划分。
 
@@ -175,59 +318,40 @@ def _load_data_splits(config) -> Dict[str, Any]:
     with open(str(split_file), "rb") as f:
         raw_data = pickle.load(f)
 
-    # 处理不同的pickle格式
-    # 格式1: {"fold_1": {"train": {...}, "test": {...}}, ...}
-    # 格式2: {"data": [[train, test], [train, test], ...]} (原始项目格式)
-    # 格式3: [{"train": {...}, "test": {...}}, ...] (list格式)
-    # 格式4: {"cv_splits": {1: {...}, 2: {...}}} (make_split.py 输出，整数key)
+    # 抽取id_splits（统一各种格式为 {fold_id: fold_data}）
+    id_splits = None  # 仅含patient_ids的原始划分
 
     if isinstance(raw_data, dict) and "cv_splits" in raw_data:
-        # 格式4: make_split.py输出，将整数key转为fold_N格式
-        cv_splits = raw_data["cv_splits"]
-        folds = {}
-        for fold_id, fold_data in cv_splits.items():
-            fold_key = f"fold_{fold_id}" if isinstance(fold_id, int) else str(fold_id)
-            # 检查是否包含实际数据（x_path等）还是仅patient_ids
-            if "train" in fold_data:
-                train_data = fold_data["train"]
-                if "x_path" not in train_data and "patient_ids" in train_data:
-                    raise ValueError(
-                        f"数据划分文件仅包含病人ID，缺少实际数据(x_path/x_omic等)。\n"
-                        f"请运行完整的数据构建流水线生成包含patch路径和基因组特征的分割文件。\n"
-                        f"当前文件由make_split.py生成，仅包含病人ID级别的划分。"
-                    )
-            folds[fold_key] = fold_data
-        return folds
-
-    if isinstance(raw_data, dict) and "fold_1" in raw_data:
-        # 格式1: 已有fold键
-        return raw_data
-
-    if isinstance(raw_data, dict) and "data" in raw_data:
-        # 格式2: 原始项目格式
-        data_list = raw_data["data"]
-        folds = {}
-        for fold_idx, (train_data, test_data) in enumerate(data_list):
-            fold_key = f"fold_{fold_idx + 1}"
-            folds[fold_key] = {"train": train_data, "test": test_data}
-        return folds
-
-    if isinstance(raw_data, list):
-        # 格式3: list格式
-        folds = {}
-        for fold_idx, item in enumerate(raw_data):
-            fold_key = f"fold_{fold_idx + 1}"
+        id_splits = raw_data["cv_splits"]
+    elif isinstance(raw_data, dict) and "fold_1" in raw_data:
+        # 检查是否已含实际数据
+        sample_fold = raw_data.get("fold_1", raw_data.get(list(raw_data.keys())[0]))
+        if isinstance(sample_fold, dict):
+            sample_train = sample_fold.get("train", {})
+            if "x_path" in sample_train and len(sample_train.get("x_path", [])) > 0:
+                return raw_data  # 已有完整数据，直接返回
+            elif "patient_ids" in sample_train:
+                id_splits = {int(k.split("_")[-1]) if "_" in k else i+1: v
+                            for i, (k, v) in enumerate(sorted(raw_data.items()))}
+    elif isinstance(raw_data, dict) and "data" in raw_data:
+        id_splits = {i+1: {"train": t, "test": s} for i, (t, s) in enumerate(raw_data["data"])}
+    elif isinstance(raw_data, list):
+        id_splits = {}
+        for i, item in enumerate(raw_data):
             if isinstance(item, dict) and "train" in item:
-                folds[fold_key] = item
+                id_splits[i+1] = item
             elif isinstance(item, (list, tuple)) and len(item) == 2:
-                folds[fold_key] = {"train": item[0], "test": item[1]}
-            else:
-                raise ValueError(f"无法解析fold_{fold_idx + 1}的数据格式")
-        return folds
+                id_splits[i+1] = {"train": item[0], "test": item[1]}
+
+    if id_splits is not None:
+        # 需要自动构建完整数据
+        if logger is None:
+            logger = logging.getLogger("YuHou")
+        return _auto_build_full_splits(id_splits, config, logger)
 
     raise ValueError(
         f"无法解析数据划分文件 {split_file}。\n"
-        f"支持格式: dict with fold keys / dict with 'data' key / list of folds"
+        f"支持格式: dict with fold keys / dict with 'data' key / list of folds / cv_splits"
     )
 
 
@@ -580,7 +704,7 @@ def run_cross_validation(config) -> Dict[str, Any]:
     log_section(logger, "加载数据划分", width=70)
 
     try:
-        data_splits = _load_data_splits(config)
+        data_splits = _load_data_splits(config, logger)
     except Exception as e:
         logger.error(f"  数据加载失败: {e}")
         raise
@@ -1008,7 +1132,7 @@ if __name__ == "__main__":
         split_file = config.resolve_path(config.data.split_file)
 
         if split_file.exists():
-            data_splits = _load_data_splits(config)
+            data_splits = _load_data_splits(config, logger)
             print(f"  数据划分文件: {split_file}")
             print(f"  可用折数: {len(data_splits)}")
             for fold_name in sorted(data_splits.keys()):
