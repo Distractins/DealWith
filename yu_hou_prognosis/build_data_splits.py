@@ -132,11 +132,27 @@ def build_full_data_splits(config):
             raise ValueError(f"列 '{col}' 不在CSV中。可用列: {list(df.columns)[:20]}...")
 
     # 基因组特征列（排除ID列、生存列、分类列等非特征列）
-    exclude_patterns = ["TCGA", "ID", "indexes", "event", "censored", "Survival",
-                        "vital_status", "survival_source", "tumor_grade", "tumor_stage",
-                        "histological_type", "suspicious"]
-    feature_cols = [c for c in df.columns
-                    if not any(pat.lower() in c.lower() for pat in exclude_patterns)]
+    # 同时只保留数值型列，自动过滤 gender/tumor_grade 等字符串列
+    exclude_patterns = [
+        "TCGA", "ID", "indexes", "event", "censored", "Survival",
+        "vital_status", "survival_source", "tumor_grade", "tumor_stage",
+        "histological_type", "suspicious", "gender", "age_at_diagnosis",
+        "codeletion", "idh mutation",
+    ]
+    feature_cols = []
+    for c in df.columns:
+        if any(pat.lower() in c.lower() for pat in exclude_patterns):
+            continue
+        # 只保留数值型列（自动排除字符串列）
+        if df[c].dtype in (np.float64, np.float32, np.int64, np.int32):
+            feature_cols.append(c)
+
+    # 如果过滤后特征维度与配置不一致，以实际数据为准
+    if len(feature_cols) != config.data.genomic.input_dim:
+        print(f"[注意] 实际特征维度({len(feature_cols)}) 与配置input_dim({config.data.genomic.input_dim})不一致")
+        print(f"  将使用实际维度 {len(feature_cols)} 进行训练")
+        config.data.genomic.input_dim = len(feature_cols)
+        config.model.omic.input_dim = len(feature_cols)
     print(f"[信息] 基因组特征维度: {len(feature_cols)}")
 
     # 构建病人ID → 基因组特征映射（短ID: TCGA-XX-XXXX）
