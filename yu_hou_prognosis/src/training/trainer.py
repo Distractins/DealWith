@@ -538,6 +538,15 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
         with autocast(enabled=use_amp):
             features, hazard = model(x_path=x_path, x_omic=x_omic)
 
+            # NaN/Inf 检测：模型输出
+            if torch.isnan(hazard).any() or torch.isinf(hazard).any():
+                if logger and batch_idx == 0:
+                    logger.warning(
+                        f"  [数值警告] batch {batch_idx}: hazard包含NaN/Inf，"
+                        f"将跳过此batch"
+                    )
+                continue
+
             # 分类任务也需要logits (ncls模式下hazard是[C]维分类logits)
             cls_logits, cls_labels = None, None
             if config.model.task == "ncls":
@@ -553,6 +562,15 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
                 cls_logits=cls_logits,
                 cls_labels=cls_labels,
             )
+
+            # NaN/Inf 检测：loss
+            if torch.isnan(total_loss) or torch.isinf(total_loss):
+                if logger and batch_idx < 3:
+                    logger.warning(
+                        f"  [数值警告] batch {batch_idx}: loss为NaN/Inf，"
+                        f"跳过此batch。hazard范围: [{hazard.min().item():.2f}, {hazard.max().item():.2f}]"
+                    )
+                continue
 
             # 梯度累积缩放
             total_loss = total_loss / accum_steps

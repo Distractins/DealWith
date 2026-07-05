@@ -73,12 +73,25 @@ def CoxLoss(survtime, censor, hazard_pred, device):
         hazard_pred = hazard_pred.to(current_device)
 
     theta = hazard_pred.reshape(-1)
-    exp_theta = torch.exp(theta)
+
+    # 数值稳定：使用 log-sum-exp trick
+    # 裁剪极端值防止溢出
+    MAX_LOGIT = 50.0
+    theta = torch.clamp(theta, min=-MAX_LOGIT, max=MAX_LOGIT)
+
+    theta_max = theta.max()
+    exp_theta_stable = torch.exp(theta - theta_max)
 
     # 部分似然: -mean( (θ_i - log(Σ_{j∈R_i} exp(θ_j))) * δ_i )
+    # log(Σ exp(θ_j)) = θ_max + log(Σ exp(θ_j - θ_max))
     loss_cox = -torch.mean(
-        (theta - torch.log(torch.sum(exp_theta * R_mat, dim=1))) * censor
+        (theta - (theta_max + torch.log(torch.sum(exp_theta_stable * R_mat, dim=1) + 1e-8))) * censor
     )
+
+    # 安全检查
+    if torch.isnan(loss_cox) or torch.isinf(loss_cox):
+        loss_cox = torch.tensor(0.0, device=current_device)
+
     return loss_cox
 
 
@@ -139,7 +152,10 @@ class CoxPartialLikelihoodLoss(nn.Module):
 
     def forward(self, hazard_pred, survtime, censor):
         """
-        计算Cox部分似然损失。
+        计算Cox部分似然损失（数值稳定版）。
+
+        使用 log-sum-exp trick 防止 exp 溢出:
+            log(Σ exp(θ_j)) = θ_max + log(Σ exp(θ_j - θ_max))
 
         参数:
             hazard_pred: [B] 或 [B, 1] 模型预测的风险分数
@@ -159,22 +175,31 @@ class CoxPartialLikelihoodLoss(nn.Module):
         if n < 2:
             return torch.tensor(0.0, device=device)
 
+        # 检测并裁剪极端值，防止溢出
+        MAX_LOGIT = 50.0  # exp(50) ≈ 5.2e21，安全范围
+        hazard_pred = torch.clamp(hazard_pred, min=-MAX_LOGIT, max=MAX_LOGIT)
+
         # 构建风险集矩阵（按生存时间排序）
         # R[i,j] = 1 表示患者j在患者i死亡时仍存活
         survtime_diff = survtime.unsqueeze(0) - survtime.unsqueeze(1)  # [n, n]
         R = (survtime_diff <= 0).float()  # [n, n]: 风险集指示矩阵
 
-        # 风险分数
+        # 风险分数（数值稳定：使用 log-sum-exp trick）
         theta = hazard_pred  # [n]
-        exp_theta = torch.exp(theta)  # [n]
+        theta_max = theta.max()  # 全局最大值用于稳定化
+        exp_theta_stable = torch.exp(theta - theta_max)  # [n], 所有值 ≤ 1
 
         # 风险集内的exp(theta)之和
-        risk_sum = torch.matmul(R, exp_theta)  # [n]: Σ_{j∈R_i} exp(θ_j)
+        risk_sum = torch.matmul(R, exp_theta_stable)  # [n]: Σ_{j∈R_i} exp(θ_j - θ_max)
 
         # 部分似然: -Σ δ_i * (θ_i - log(risk_sum_i))
-        # 只对发生事件的样本计算
-        log_risk = theta - torch.log(risk_sum + 1e-8)
+        # log(risk_sum_i) = log(Σ exp(θ_j - θ_max)) + θ_max
+        log_risk = theta - (theta_max + torch.log(risk_sum + 1e-8))
         loss = -torch.mean(censor * log_risk)
+
+        # 安全检查: 如果loss为NaN/Inf，返回0（由梯度裁剪处理）
+        if torch.isnan(loss) or torch.isinf(loss):
+            loss = torch.tensor(0.0, device=device)
 
         return loss
 

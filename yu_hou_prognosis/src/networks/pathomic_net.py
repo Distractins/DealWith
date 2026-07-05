@@ -190,6 +190,11 @@ class PathomicNet(nn.Module):
             hazard = self.act(hazard)
             if isinstance(self.act, nn.Sigmoid):
                 hazard = hazard * self.output_range + self.output_shift
+        else:
+            # surv任务: 裁剪极端值防止exp溢出
+            # 数值安全: exp(20) ≈ 4.8e8 仍在float32范围内
+            MAX_LOGIT = 20.0
+            hazard = torch.clamp(hazard, min=-MAX_LOGIT, max=MAX_LOGIT)
 
         return fused_feat, hazard
 

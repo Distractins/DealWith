@@ -179,6 +179,18 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
             feature_cols.append(c)
     logger.info(f"  基因组特征维度: {len(feature_cols)}")
 
+    # 检查特征数据中的NaN情况
+    feature_df = df[feature_cols]
+    nan_count = feature_df.isna().sum().sum()
+    inf_count = np.isinf(feature_df.values).sum() if feature_df.values.dtype in (np.float64, np.float32) else 0
+    if nan_count > 0 or inf_count > 0:
+        logger.warning(
+            f"  [数据质量] 基因组特征含 NaN={nan_count}, Inf={inf_count}。"
+            f"将用0填充。"
+        )
+        feature_df = feature_df.fillna(0.0)
+        feature_df = feature_df.replace([np.inf, -np.inf], 0.0)
+
     # 更新配置
     if len(feature_cols) != config.data.genomic.input_dim:
         logger.info(f"  维度适配: {config.data.genomic.input_dim} -> {len(feature_cols)}")
@@ -188,9 +200,10 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
     # 构建病人ID → 基因组特征映射
     genomic_map = {}
     survival_map = {}
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
         pid = str(row[patient_id_col]).strip()
-        genomic_map[pid] = row[feature_cols].values.astype(np.float32)
+        # 使用已填充NaN的feature_df
+        genomic_map[pid] = feature_df.iloc[idx].values.astype(np.float32)
         survival_map[pid] = {
             "e": float(row[event_col]),
             "t": float(row[time_col]),
@@ -252,17 +265,49 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
                 if len(patches) < config.upstream.num_patches_per_patient:
                     fold_missing += 1; continue
 
-                x_omic_list.append(genomic_map[pid])
+                # 检查基因组特征是否包含NaN/Inf
+                gvec = genomic_map[pid]
+                if np.any(np.isnan(gvec)) or np.any(np.isinf(gvec)):
+                    fold_missing += 1; continue
+
+                x_omic_list.append(gvec)
                 s = survival_map[pid]
                 e_list.append(s["e"]); t_list.append(s["t"]); g_list.append(s["g"])
                 x_path_list.append(patches)
 
             n = len(x_omic_list)
+            if n > 0:
+                # 检查汇总后的数据是否有NaN
+                x_omic_arr = np.array(x_omic_list, dtype=np.float32)
+                e_arr = np.array(e_list, dtype=np.float32)
+                t_arr = np.array(t_list, dtype=np.float32)
+
+                nan_in_omic = np.any(np.isnan(x_omic_arr))
+                nan_in_e = np.any(np.isnan(e_arr))
+                nan_in_t = np.any(np.isnan(t_arr))
+
+                if nan_in_omic or nan_in_e or nan_in_t:
+                    logger.warning(
+                        f"  [数据警告] {fold_key}/{split_name}: "
+                        f"omic NaN={nan_in_omic}, event NaN={nan_in_e}, time NaN={nan_in_t}"
+                    )
+                    # 用0替换NaN
+                    if nan_in_omic:
+                        x_omic_arr = np.nan_to_num(x_omic_arr, nan=0.0, posinf=0.0, neginf=0.0)
+                    if nan_in_e:
+                        e_arr = np.nan_to_num(e_arr, nan=0.0)
+                    if nan_in_t:
+                        t_arr = np.nan_to_num(t_arr, nan=0.0)
+            else:
+                x_omic_arr = np.array([], dtype=np.float32)
+                e_arr = np.array([], dtype=np.float32)
+                t_arr = np.array([], dtype=np.float32)
+
             output_folds[fold_key][split_name] = {
                 "x_path": x_path_list,
-                "x_omic": np.array(x_omic_list, dtype=np.float32) if x_omic_list else np.array([]),
-                "e": np.array(e_list, dtype=np.float32) if e_list else np.array([]),
-                "t": np.array(t_list, dtype=np.float32) if t_list else np.array([]),
+                "x_omic": x_omic_arr,
+                "e": e_arr,
+                "t": t_arr,
                 "g": g_list,
             }
             logger.info(f"  {fold_key}/{split_name}: {n}病人 (跳过{fold_missing})")
