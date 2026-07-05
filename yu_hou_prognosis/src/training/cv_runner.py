@@ -179,6 +179,25 @@ def _load_data_splits(config) -> Dict[str, Any]:
     # 格式1: {"fold_1": {"train": {...}, "test": {...}}, ...}
     # 格式2: {"data": [[train, test], [train, test], ...]} (原始项目格式)
     # 格式3: [{"train": {...}, "test": {...}}, ...] (list格式)
+    # 格式4: {"cv_splits": {1: {...}, 2: {...}}} (make_split.py 输出，整数key)
+
+    if isinstance(raw_data, dict) and "cv_splits" in raw_data:
+        # 格式4: make_split.py输出，将整数key转为fold_N格式
+        cv_splits = raw_data["cv_splits"]
+        folds = {}
+        for fold_id, fold_data in cv_splits.items():
+            fold_key = f"fold_{fold_id}" if isinstance(fold_id, int) else str(fold_id)
+            # 检查是否包含实际数据（x_path等）还是仅patient_ids
+            if "train" in fold_data:
+                train_data = fold_data["train"]
+                if "x_path" not in train_data and "patient_ids" in train_data:
+                    raise ValueError(
+                        f"数据划分文件仅包含病人ID，缺少实际数据(x_path/x_omic等)。\n"
+                        f"请运行完整的数据构建流水线生成包含patch路径和基因组特征的分割文件。\n"
+                        f"当前文件由make_split.py生成，仅包含病人ID级别的划分。"
+                    )
+            folds[fold_key] = fold_data
+        return folds
 
     if isinstance(raw_data, dict) and "fold_1" in raw_data:
         # 格式1: 已有fold键

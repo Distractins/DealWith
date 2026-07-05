@@ -240,7 +240,7 @@ def _build_scheduler(optimizer: optim.Optimizer, config) -> torch.optim.lr_sched
         return optim.lr_scheduler.LinearLR(
             optimizer,
             start_factor=1.0,
-            end_factor=sched_cfg.min_lr / sched_cfg.min_lr,
+            end_factor=sched_cfg.min_lr / config.training.optimizer.lr,
             total_iters=total_epochs,
         )
     else:

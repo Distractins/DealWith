@@ -45,6 +45,9 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
+# 模块级导入（供各子函数使用）
+from src.utils.logger import log_section
+
 
 def main():
     """主入口函数"""
@@ -108,7 +111,7 @@ def main():
         config.training.optimizer.lr = args.lr
     if args.gpu_id is not None:
         config.training.gpu_id = args.gpu_id
-    if args.n_epochs:
+    if args.n_epochs is not None:
         config.training.scheduler.n_epochs = args.n_epochs
     if args.seed:
         config.model.seed = args.seed
@@ -192,7 +195,7 @@ def _run_eda(config, logger):
 
 
 def _run_train(config, logger, exp_dirs):
-    """运行模型训练"""
+    """运行模型训练（完整5折交叉验证）"""
     log_section(logger, "模型训练")
 
     # 设置GPU
@@ -204,17 +207,11 @@ def _run_train(config, logger, exp_dirs):
     logger.info(f"批次大小: {config.training.batch_size}")
     logger.info(f"实验名称: {config.experiment.name}")
 
-    # 构建模型
-    from src.networks.pathomic_net import create_pathomic_net
-    logger.info("构建PathomicNet多模态预测模型...")
-    model = create_pathomic_net(config)
-    model = model.to(device)
-
-    logger.info(f"模型总参数量: {sum(p.numel() for p in model.parameters()):,}")
-
-    # 模拟训练（完整训练需要在cv_runner中执行）
-    logger.info("训练就绪。请使用cv_runner执行完整的交叉验证训练。")
-    logger.info("提示: 完整的5折CV训练流程将在后续版本中自动触发。")
+    # 启动交叉验证训练
+    from src.training.cv_runner import run_cross_validation
+    logger.info("启动5折交叉验证训练流程...")
+    cv_package = run_cross_validation(config)
+    logger.info("训练完成！CV结果已保存至 experiments/%s/results/", config.experiment.name)
 
 
 def _run_test(config, logger, exp_dirs):

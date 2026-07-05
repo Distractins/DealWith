@@ -110,40 +110,33 @@ class Tester:
             censor = np.concatenate(censor_all)
             survtime = np.concatenate(survtime_all)
 
-            # C-index
-            cindex = CIndex_lifeline(risk_pred, censor, survtime)
+            # C-index (参数顺序: hazard_pred, survtime, event)
+            cindex = CIndex_lifeline(risk_pred, survtime, censor)
             results["cindex"] = cindex
 
-            # Log-rank p-value
-            pvalue = cox_log_rank(risk_pred, censor, survtime)
+            # Log-rank p-value (参数顺序: hazard_pred, survtime, event)
+            pvalue = cox_log_rank(risk_pred, survtime, censor)
             results["pvalue"] = pvalue
 
-            # Time-dependent AUC
-            train_data = data.get("train", {})
-            train_labels = np.array(train_data.get("e", [])) if "e" in train_data else None
-            train_times = np.array(train_data.get("t", [])) if "t" in train_data else None
-
+            # Time-dependent AUC (参数顺序: survtime, event, hazard_pred)
             td_auc = safe_time_dependent_auc(
-                train_hazards=None,
-                train_labels=train_labels,
-                train_survtime=train_times,
-                test_hazards=risk_pred,
-                test_labels=censor,
-                test_survtime=survtime,
-                eval_times=self.config.evaluation.eval_times,
+                survtime=survtime,
+                event=censor,
+                hazard_pred=risk_pred,
+                times=self.config.evaluation.eval_times,
             )
             results["td_auc"] = td_auc
 
-            # 二分类指标 (中位分割)
-            binary_metrics = safe_binary_metrics_from_risk(risk_pred, censor)
+            # 二分类指标 (参数顺序: hazard_pred, survtime, event)
+            binary_metrics = safe_binary_metrics_from_risk(risk_pred, survtime, censor)
             results["binary_metrics"] = binary_metrics
 
-            # 风险分组摘要
-            group_summary = safe_group_survival_summary(risk_pred, censor, survtime)
+            # 风险分组摘要 (参数顺序: hazard_pred, survtime, event)
+            group_summary = safe_group_survival_summary(risk_pred, survtime, censor)
             results["group_summary"] = group_summary
 
-            # Hazard Ratio
-            hr = safe_hazard_ratio_by_median_split(risk_pred, censor, survtime)
+            # Hazard Ratio (参数顺序: hazard_pred, survtime, event)
+            hr = safe_hazard_ratio_by_median_split(risk_pred, survtime, censor)
             results["hazard_ratio"] = hr
 
             # 预测结果

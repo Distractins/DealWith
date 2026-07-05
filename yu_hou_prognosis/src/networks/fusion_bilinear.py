@@ -112,7 +112,7 @@ class BilinearFusion(nn.Module):
 
         # encoder2: 处理skip拼接后的特征
         self.encoder2 = nn.Sequential(
-            nn.Linear(mmid + skip_dim, mmhid),
+            nn.Linear(mmhid + skip_dim, mmhid),
             nn.ReLU(),
             nn.Dropout(p=dropout_rate),
         )
@@ -122,7 +122,7 @@ class BilinearFusion(nn.Module):
 
         # skip加权网络: 控制skip特征的混合比例
         self.skip_weight_net = nn.Sequential(
-            nn.Linear(mmid + (dim1 + 1) + (dim2 + 1), 75),
+            nn.Linear(mmhid + (dim1 + 1) + (dim2 + 1), 75),
             nn.ReLU(),
             nn.Linear(75, mmhid + (dim1 + 1) + (dim2 + 1)),
             nn.Sigmoid(),

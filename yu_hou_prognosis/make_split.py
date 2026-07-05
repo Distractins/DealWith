@@ -19,7 +19,7 @@ splits = build_survival_splits(
     seed=config.model.seed,
     event_col="event",
     time_col="Survival months",
-    patient_id_col="TCGA ID"
+    patient_id_col="TCGA ID",
 )
 
 # 保存
