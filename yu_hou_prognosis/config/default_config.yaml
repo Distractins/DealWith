@@ -28,21 +28,21 @@ upstream:
 # ---- 数据路径 ----
 data:
   # 数据集根目录
-  root: "data/TCGA_COAD"
+  root: "data"
   # 基因组临床数据CSV文件路径
-  genomic_csv: "data/TCGA_COAD/COAD_all_dataset.csv"
+  genomic_csv: "data/COAD_all_dataset.csv"
   # 预生成的5折交叉验证拆分文件
-  split_file: "data/TCGA_COAD/splits/coad_allst_patient5fold.pkl"
+  split_file: "data/splits/coad_allst_patient5fold.pkl"
   # 基因组特征相关配置
   genomic:
     # 原始基因组特征维度（COAD_all_dataset.csv中的基因特征列数）
     input_dim: 356
     # 存活时间列名
-    survtime_col: "OS.time"
+    survtime_col: "Survival months"
     # 删失标记列名（1=事件发生, 0=删失）
-    censor_col: "OS"
+    censor_col: "event"
     # 病人ID列名
-    patient_id_col: "PatientID"
+    patient_id_col: "TCGA ID"
     # 特征选择配置
     feature_selection:
       # 方法: none / variance_threshold / mutual_info / lasso / rf_importance / pca

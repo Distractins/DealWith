@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 # Paths (REQUIRED: edit before running)
 # ---------------------------------------------------------------------------
-wsi_root: "F:/TCGA_COAD_WSI"          # Root directory with .svs files
+wsi_root: "D:/xcjhhh/TCGA_COAD_WSI"          # Root directory with .svs files
 output_root: "outputs"                       # All outputs go here (relative or absolute)
 
 # ---------------------------------------------------------------------------
