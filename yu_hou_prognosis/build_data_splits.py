@@ -47,7 +47,7 @@ def build_patient_patch_map(config) -> Dict[str, List[str]]:
         - 通过前缀匹配关联
 
     返回:
-        {patient_short_id: [patch_path_1, patch_path_2, ...]}
+        {slide_long_id: [patch_path_1, patch_path_2, ...]}
     """
     reader = UpstreamPatchReader(config)
     patch_dir = reader.get_patch_dir()
@@ -71,15 +71,15 @@ def build_patient_patch_map(config) -> Dict[str, List[str]]:
     num_patches = config.upstream.num_patches_per_patient
     print(f"[分组] 识别到 {len(slide_patches)} 个唯一slide ID")
 
-    # 每个slide取前num_patches个patch
+    # 只保留patch数量达标的slide
     result = {}
     for slide_id, patches in sorted(slide_patches.items()):
         if len(patches) >= num_patches:
             result[slide_id] = sorted(patches)[:num_patches]
         else:
-            print(f"  [跳过] {slide_id}: 仅有{len(patches)}个patch (需要>={num_patches})")
+            print(f"  [过滤丢弃] {slide_id}: 仅有{len(patches)}个patch (需要>={num_patches})")
 
-    print(f"[结果] {len(result)} 个合格病人 (patch数>={num_patches})")
+    print(f"[结果] {len(result)} 个合格slide (patch数>={num_patches})")
     return result
 
 
@@ -188,7 +188,7 @@ def build_full_data_splits(config):
         if long_ids:
             short_to_single[short_id] = long_ids[0]
 
-    print(f"[匹配] 短ID->长slide映射: {len(short_to_single)} 个")
+    print(f"[匹配] 短ID->长slide映射(全部patch达标): {len(short_to_single)} 个")
 
     # ---- 4. 构建每折的完整数据 ----
     output_folds = {}
@@ -208,7 +208,7 @@ def build_full_data_splits(config):
                 continue
 
             patient_ids = fold_data[split_name].get("patient_ids", [])
-            print(f"\n[构建] {fold_key}/{split_name}: {len(patient_ids)} 个病人")
+            print(f"\n[构建] {fold_key}/{split_name}: 原始拆分 {len(patient_ids)} 个病人")
 
             x_path_list = []   # List[List[str]]
             x_omic_list = []   # np.ndarray
@@ -219,28 +219,25 @@ def build_full_data_splits(config):
             for pid in patient_ids:
                 pid = str(pid).strip()
 
-                # ---- 基因组数据（必须有） ----
+                # 条件1：基因组数据必须存在，缺失直接丢弃
                 if pid not in genomic_map:
                     fold_missing_genomic += 1
                     continue
 
-                # ---- Patch数据（必须有足够的patch） ----
-                patches = []
-                if pid in short_to_single:
-                    long_id = short_to_single[pid]
-                    patches = patch_map.get(long_id, [])
-
-                if len(patches) < config.upstream.num_patches_per_patient:
+                # 条件2：必须存在匹配且patch达标的slide
+                if pid not in short_to_single:
                     fold_missing_patches += 1
-                    continue  # 跳过patch不足的病人，保持数据一致性
+                    continue
+                long_id = short_to_single[pid]
+                patches = patch_map.get(long_id, [])
 
-                # 两项数据都齐全，才加入
+                # 双条件全部满足才加入数据集，不会出现空patch列表
                 x_omic_list.append(genomic_map[pid])
                 surv = survival_map[pid]
                 e_list.append(surv["e"])
                 t_list.append(surv["t"])
                 g_list.append(surv["g"])
-                x_path_list.append(patches[:config.upstream.num_patches_per_patient])
+                x_path_list.append(patches)
 
             # 转为numpy数组
             n_patients = len(x_omic_list)
@@ -248,49 +245,45 @@ def build_full_data_splits(config):
                 "x_path": x_path_list,
                 "x_omic": np.array(x_omic_list, dtype=np.float32) if x_omic_list else np.array([]),
                 "e": np.array(e_list, dtype=np.float32) if e_list else np.array([]),
-                "t": np.array(t_list, dtype=np.float32) if t_list else np.array([]),
+                "t": np.array(t_list, dtype=np.float32) if e_list else np.array([]),
                 "g": g_list,
             }
 
-            print(f"  实际病人数: {n_patients}")
-            print(f"  缺失patch: {fold_missing_patches}, 缺失基因组: {fold_missing_genomic}")
+            print(f"  筛选后有效病人数: {n_patients}")
+            print(f"  无匹配/不足patch丢弃: {fold_missing_patches}, 无基因组丢弃: {fold_missing_genomic}")
 
         overall_missing_patches += fold_missing_patches
         overall_missing_genomic += fold_missing_genomic
 
     # ---- 5. 统计与验证 ----
     print(f"\n{'='*60}")
-    print(f"[汇总]")
-    print(f"  总缺失patch病人: {overall_missing_patches}")
-    print(f"  总缺失基因组病人: {overall_missing_genomic}")
+    print(f"[全局汇总]")
+    print(f"  总因patch不足丢弃病人: {overall_missing_patches}")
+    print(f"  总因缺失基因组丢弃病人: {overall_missing_genomic}")
 
-    # 验证每个fold
+    # 打印每折有效样本
     for fold_key in sorted(output_folds.keys()):
         fd = output_folds[fold_key]
         for split_name in ["train", "test"]:
             if split_name in fd:
                 data = fd[split_name]
                 n = len(data.get("x_omic", []))
-                n_patches = len(data.get("x_path", []))
-                has_patches = sum(1 for p in data.get("x_path", []) if len(p) > 0)
-                print(f"  {fold_key}/{split_name}: {n}病人, "
-                      f"有patch={has_patches}/{n_patches}")
+                print(f"  {fold_key}/{split_name}: 最终有效病人 = {n}")
 
     # ---- 6. 保存 ----
     output_path = config.resolve_path(config.data.split_file)
     # 备份原文件
     if output_path.exists():
         backup_path = output_path.with_suffix(".pkl.bak")
-        print(f"\n[备份] 原文件 -> {backup_path}")
+        print(f"\n[备份] 旧拆分文件备份至: {backup_path}")
         output_path.rename(backup_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         pickle.dump(output_folds, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    print(f"\n[完成] 完整数据划分已保存: {output_path}")
-    print(f"  格式: fold_N -> {{train: {{x_path, x_omic, e, t, g}}, test: {{...}}}}")
-    print(f"  cv_runner可直接加载此文件进行训练")
+    print(f"\n[完成] 合法完整数据划分已保存: {output_path}")
+    print(f"  所有样本均满足: 基因组存在 + patch数量达标，训练不会再报patch=0错误")
 
     return output_folds
 
