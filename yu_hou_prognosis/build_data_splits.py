@@ -164,7 +164,7 @@ def build_full_data_splits(config):
         survival_map[pid] = {
             "e": float(row[event_col]),
             "t": float(row[time_col]),
-            "g": str(row.get("t", "")),  # 用生存时间作为分组标签（surv任务下可不使用）
+            "g": 0,  # surv任务下标签不使用，填充占位值
         }
 
     print(f"[信息] 基因组特征映射: {len(genomic_map)} 个病人")
@@ -219,30 +219,28 @@ def build_full_data_splits(config):
             for pid in patient_ids:
                 pid = str(pid).strip()
 
-                # ---- 基因组数据 ----
-                if pid in genomic_map:
-                    x_omic_list.append(genomic_map[pid])
-                    surv = survival_map[pid]
-                    e_list.append(surv["e"])
-                    t_list.append(surv["t"])
-                    g_list.append(surv["g"])
-                else:
+                # ---- 基因组数据（必须有） ----
+                if pid not in genomic_map:
                     fold_missing_genomic += 1
-                    continue  # 跳过没有基因组数据的病人
+                    continue
 
-                # ---- Patch数据 ----
+                # ---- Patch数据（必须有足够的patch） ----
+                patches = []
                 if pid in short_to_single:
                     long_id = short_to_single[pid]
                     patches = patch_map.get(long_id, [])
-                    if len(patches) >= config.upstream.num_patches_per_patient:
-                        x_path_list.append(patches[:config.upstream.num_patches_per_patient])
-                    else:
-                        fold_missing_patches += 1
-                        # 用空列表占位（后续在Dataset中会处理）
-                        x_path_list.append([])
-                else:
+
+                if len(patches) < config.upstream.num_patches_per_patient:
                     fold_missing_patches += 1
-                    x_path_list.append([])
+                    continue  # 跳过patch不足的病人，保持数据一致性
+
+                # 两项数据都齐全，才加入
+                x_omic_list.append(genomic_map[pid])
+                surv = survival_map[pid]
+                e_list.append(surv["e"])
+                t_list.append(surv["t"])
+                g_list.append(surv["g"])
+                x_path_list.append(patches[:config.upstream.num_patches_per_patient])
 
             # 转为numpy数组
             n_patients = len(x_omic_list)

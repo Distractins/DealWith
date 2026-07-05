@@ -1,0 +1,261 @@
+======================================================================
+  YuHou - 结直肠癌COAD多模态预后预测系统
+  YuHou (预后) Multi-modal Prognosis Prediction
+======================================================================
+2026-07-05 20:01:59,253 [信息] 日志文件: D:\xcjhhh\DealWith\yu_hou_prognosis\experiments\default\logs\main.log
+2026-07-05 20:01:59,284 [信息] 随机种子已设置: 2026
+2026-07-05 20:01:59,288 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:01:59,292 [信息] 
+======================================================================
+YuHou多模态预后预测 - 配置摘要
+======================================================================
+  项目版本     : 2.0.0
+  实验名称     : default
+  配置文件     : D:\xcjhhh\DealWith\yu_hou_prognosis\config\default_config.yaml
+----------------------------------------------------------------------
+  任务类型     : surv
+  运行模式     : pathomic
+  融合策略     : caugf
+  批次大小     : 4
+  学习率       : 0.0001
+  总训练轮数   : 12
+  AMP混合精度  : True
+  GPU ID       : 0
+----------------------------------------------------------------------
+  基因组特征   : 356维 -> 100维(筛选后)
+  图像预处理   : True
+  模糊过滤     : True
+  上游算法     : grid
+----------------------------------------------------------------------
+  评估时间点   : [12, 24, 36] (月)
+  交叉验证折数 : 5
+======================================================================
+2026-07-05 20:01:59,293 [信息] ============================================================
+2026-07-05 20:01:59,294 [信息] 模型训练
+2026-07-05 20:01:59,294 [信息] ============================================================
+[GPU] 设备: NVIDIA GeForce RTX 4080 SUPER (16.0 GB)
+[GPU] cuDNN benchmark: ON
+[GPU] TF32: ON (如果支持)
+2026-07-05 20:02:00,223 [信息] 训练设备: cuda:0
+2026-07-05 20:02:00,223 [信息] 融合策略: caugf
+2026-07-05 20:02:00,224 [信息] 批次大小: 4
+2026-07-05 20:02:00,224 [信息] 实验名称: default
+2026-07-05 20:02:00,224 [信息] 启动5折交叉验证训练流程...
+2026-07-05 20:02:00,225 [信息] 日志文件: D:\xcjhhh\DealWith\yu_hou_prognosis\experiments\default\logs\cv_train.log
+2026-07-05 20:02:00,226 [信息] ======================================================================
+2026-07-05 20:02:00,226 [信息]   YuHou 2.0.0 - 交叉验证启动
+2026-07-05 20:02:00,226 [信息]   配置文件: D:\xcjhhh\DealWith\yu_hou_prognosis\config\default_config.yaml
+2026-07-05 20:02:00,227 [信息]   实验名称: default
+2026-07-05 20:02:00,227 [信息] ======================================================================
+2026-07-05 20:02:00,751 [信息] ======================================================================
+2026-07-05 20:02:00,751 [信息] 系统信息
+2026-07-05 20:02:00,752 [信息] ======================================================================
+2026-07-05 20:02:00,753 [信息]   运行时间:       2026-07-05T20:02:00.227247
+2026-07-05 20:02:00,753 [信息]   主机名:         DESKTOP-21TSNCU
+2026-07-05 20:02:00,754 [信息]   操作系统:       Windows-10-10.0.19045-SP0
+2026-07-05 20:02:00,754 [信息]   Python版本:     3.10.18
+2026-07-05 20:02:00,755 [信息]   PyTorch版本:    2.5.1+cu121
+2026-07-05 20:02:00,755 [信息] ----------------------------------------------------------------------
+2026-07-05 20:02:00,755 [信息]   CPU物理核心:    24
+2026-07-05 20:02:00,756 [信息]   CPU逻辑核心:    32
+2026-07-05 20:02:00,756 [信息]   CPU使用率:      1.2%
+2026-07-05 20:02:00,757 [信息]   总内存:         63.8 GB
+2026-07-05 20:02:00,757 [信息]   可用内存:       50.4 GB
+2026-07-05 20:02:00,758 [信息]   内存使用率:     21.1%
+2026-07-05 20:02:00,758 [信息] ----------------------------------------------------------------------
+2026-07-05 20:02:00,759 [信息]   GPU数量:        1
+2026-07-05 20:02:00,759 [信息]   CUDA版本:       12.1
+2026-07-05 20:02:00,759 [信息]   cuDNN版本:      90100
+2026-07-05 20:02:00,760 [信息]   GPU[0]: NVIDIA GeForce RTX 4080 SUPER
+2026-07-05 20:02:00,760 [信息]     显存总量:     16.0 GB
+2026-07-05 20:02:00,761 [信息]     计算能力:     8.9
+2026-07-05 20:02:00,761 [信息]     流处理器数:   80
+2026-07-05 20:02:00,762 [信息] ======================================================================
+2026-07-05 20:02:00,763 [信息]   使用设备: cuda:0 (NVIDIA GeForce RTX 4080 SUPER)
+2026-07-05 20:02:00,764 [信息] 随机种子已设置: 2026
+2026-07-05 20:02:00,765 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:02:00,765 [信息] 
+2026-07-05 20:02:00,766 [信息] ======================================================================
+2026-07-05 20:02:00,766 [信息] 加载数据划分
+2026-07-05 20:02:00,767 [信息] ======================================================================
+2026-07-05 20:02:00,768 [信息]   数据划分文件: data/splits/coad_allst_patient5fold.pkl
+2026-07-05 20:02:00,836 [信息]   可用折数: 5
+2026-07-05 20:02:00,850 [信息]   实际运行折: ['fold_1', 'fold_2', 'fold_3', 'fold_4', 'fold_5']
+2026-07-05 20:02:00,851 [信息] ======================================================================
+2026-07-05 20:02:00,853 [信息] 
+2026-07-05 20:02:00,854 [信息] ######################################################################
+2026-07-05 20:02:00,856 [信息]   >>> 开始处理 fold_1 (第1/5折) <<<
+2026-07-05 20:02:00,857 [信息] ######################################################################
+2026-07-05 20:02:00,859 [信息] ======================================================================
+2026-07-05 20:02:00,860 [信息]   Fold 1 - 训练开始
+2026-07-05 20:02:00,861 [信息] ======================================================================
+2026-07-05 20:02:00,865 [信息] 随机种子已设置: 2027
+2026-07-05 20:02:00,866 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:02:00,868 [信息]   [训练配置]
+2026-07-05 20:02:00,869 [信息]     批次大小: 4 x 梯度累积2步 = 有效批次8
+2026-07-05 20:02:00,869 [信息]     总训练轮数: 12 (含8主轮+4衰减轮)
+2026-07-05 20:02:00,870 [信息]     预热轮数: 2
+2026-07-05 20:02:00,870 [信息]     学习率: 0.0001
+2026-07-05 20:02:00,870 [信息]     权重衰减: 0.0003
+2026-07-05 20:02:00,871 [信息]     梯度裁剪: 1.0
+2026-07-05 20:02:00,871 [信息]     AMP混合精度: 启用
+2026-07-05 20:02:00,872 [信息]     正则化: none (lambda=0.0003)
+2026-07-05 20:02:00,872 [信息]     任务类型: surv
+2026-07-05 20:02:00,872 [信息]     融合策略: caugf
+2026-07-05 20:02:00,873 [信息]   [GPU显存-训练前] 已分配: 0.00GB / 已保留: 0.00GB / 总量: 15.99GB / 空闲: 15.99GB / 使用率: 0.0%
+2026-07-05 20:02:01,908 [错误]   [fold_1] 训练/测试失败: num_samples should be a positive integer value, but got num_samples=0
+2026-07-05 20:02:01,910 [错误] Traceback (most recent call last):
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\cv_runner.py", line 642, in run_cross_validation
+    model, optimizer, metric_logger = train(
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\trainer.py", line 941, in train
+    train_loader = build_dataloader(config, data, split="train", mode=config.model.mode,
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\data_loading\datasets.py", line 365, in build_dataloader
+    return torch.utils.data.DataLoader(dataset, **kwargs)
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\dataloader.py", line 376, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\sampler.py", line 164, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+2026-07-05 20:02:01,910 [信息] 
+2026-07-05 20:02:01,911 [信息] ######################################################################
+2026-07-05 20:02:01,911 [信息]   >>> 开始处理 fold_2 (第2/5折) <<<
+2026-07-05 20:02:01,911 [信息] ######################################################################
+2026-07-05 20:02:01,912 [信息] ======================================================================
+2026-07-05 20:02:01,912 [信息]   Fold 2 - 训练开始
+2026-07-05 20:02:01,912 [信息] ======================================================================
+2026-07-05 20:02:01,913 [信息] 随机种子已设置: 2028
+2026-07-05 20:02:01,915 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:02:01,916 [信息]   [训练配置]
+2026-07-05 20:02:01,916 [信息]     批次大小: 4 x 梯度累积2步 = 有效批次8
+2026-07-05 20:02:01,916 [信息]     总训练轮数: 12 (含8主轮+4衰减轮)
+2026-07-05 20:02:01,917 [信息]     预热轮数: 2
+2026-07-05 20:02:01,917 [信息]     学习率: 0.0001
+2026-07-05 20:02:01,917 [信息]     权重衰减: 0.0003
+2026-07-05 20:02:01,918 [信息]     梯度裁剪: 1.0
+2026-07-05 20:02:01,918 [信息]     AMP混合精度: 启用
+2026-07-05 20:02:01,919 [信息]     正则化: none (lambda=0.0003)
+2026-07-05 20:02:01,919 [信息]     任务类型: surv
+2026-07-05 20:02:01,919 [信息]     融合策略: caugf
+2026-07-05 20:02:01,920 [信息]   [GPU显存-训练前] 已分配: 0.00GB / 已保留: 0.00GB / 总量: 15.99GB / 空闲: 15.99GB / 使用率: 0.0%
+2026-07-05 20:02:01,920 [错误]   [fold_2] 训练/测试失败: num_samples should be a positive integer value, but got num_samples=0
+2026-07-05 20:02:01,921 [错误] Traceback (most recent call last):
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\cv_runner.py", line 642, in run_cross_validation
+    model, optimizer, metric_logger = train(
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\trainer.py", line 941, in train
+    train_loader = build_dataloader(config, data, split="train", mode=config.model.mode,
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\data_loading\datasets.py", line 365, in build_dataloader
+    return torch.utils.data.DataLoader(dataset, **kwargs)
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\dataloader.py", line 376, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\sampler.py", line 164, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+2026-07-05 20:02:01,921 [信息] 
+2026-07-05 20:02:01,922 [信息] ######################################################################
+2026-07-05 20:02:01,922 [信息]   >>> 开始处理 fold_3 (第3/5折) <<<
+2026-07-05 20:02:01,923 [信息] ######################################################################
+2026-07-05 20:02:01,923 [信息] ======================================================================
+2026-07-05 20:02:01,923 [信息]   Fold 3 - 训练开始
+2026-07-05 20:02:01,924 [信息] ======================================================================
+2026-07-05 20:02:01,924 [信息] 随机种子已设置: 2029
+2026-07-05 20:02:01,925 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:02:01,926 [信息]   [训练配置]
+2026-07-05 20:02:01,926 [信息]     批次大小: 4 x 梯度累积2步 = 有效批次8
+2026-07-05 20:02:01,927 [信息]     总训练轮数: 12 (含8主轮+4衰减轮)
+2026-07-05 20:02:01,927 [信息]     预热轮数: 2
+2026-07-05 20:02:01,927 [信息]     学习率: 0.0001
+2026-07-05 20:02:01,928 [信息]     权重衰减: 0.0003
+2026-07-05 20:02:01,928 [信息]     梯度裁剪: 1.0
+2026-07-05 20:02:01,928 [信息]     AMP混合精度: 启用
+2026-07-05 20:02:01,929 [信息]     正则化: none (lambda=0.0003)
+2026-07-05 20:02:01,929 [信息]     任务类型: surv
+2026-07-05 20:02:01,930 [信息]     融合策略: caugf
+2026-07-05 20:02:01,930 [信息]   [GPU显存-训练前] 已分配: 0.00GB / 已保留: 0.00GB / 总量: 15.99GB / 空闲: 15.99GB / 使用率: 0.0%
+2026-07-05 20:02:01,931 [错误]   [fold_3] 训练/测试失败: num_samples should be a positive integer value, but got num_samples=0
+2026-07-05 20:02:01,931 [错误] Traceback (most recent call last):
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\cv_runner.py", line 642, in run_cross_validation
+    model, optimizer, metric_logger = train(
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\trainer.py", line 941, in train
+    train_loader = build_dataloader(config, data, split="train", mode=config.model.mode,
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\data_loading\datasets.py", line 365, in build_dataloader
+    return torch.utils.data.DataLoader(dataset, **kwargs)
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\dataloader.py", line 376, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\sampler.py", line 164, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+2026-07-05 20:02:01,932 [信息] 
+2026-07-05 20:02:01,932 [信息] ######################################################################
+2026-07-05 20:02:01,932 [信息]   >>> 开始处理 fold_4 (第4/5折) <<<
+2026-07-05 20:02:01,933 [信息] ######################################################################
+2026-07-05 20:02:01,933 [信息] ======================================================================
+2026-07-05 20:02:01,934 [信息]   Fold 4 - 训练开始
+2026-07-05 20:02:01,934 [信息] ======================================================================
+2026-07-05 20:02:01,935 [信息] 随机种子已设置: 2030
+2026-07-05 20:02:01,935 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:02:01,936 [信息]   [训练配置]
+2026-07-05 20:02:01,936 [信息]     批次大小: 4 x 梯度累积2步 = 有效批次8
+2026-07-05 20:02:01,937 [信息]     总训练轮数: 12 (含8主轮+4衰减轮)
+2026-07-05 20:02:01,937 [信息]     预热轮数: 2
+2026-07-05 20:02:01,937 [信息]     学习率: 0.0001
+2026-07-05 20:02:01,938 [信息]     权重衰减: 0.0003
+2026-07-05 20:02:01,938 [信息]     梯度裁剪: 1.0
+2026-07-05 20:02:01,939 [信息]     AMP混合精度: 启用
+2026-07-05 20:02:01,939 [信息]     正则化: none (lambda=0.0003)
+2026-07-05 20:02:01,939 [信息]     任务类型: surv
+2026-07-05 20:02:01,940 [信息]     融合策略: caugf
+2026-07-05 20:02:01,940 [信息]   [GPU显存-训练前] 已分配: 0.00GB / 已保留: 0.00GB / 总量: 15.99GB / 空闲: 15.99GB / 使用率: 0.0%
+2026-07-05 20:02:01,941 [错误]   [fold_4] 训练/测试失败: num_samples should be a positive integer value, but got num_samples=0
+2026-07-05 20:02:01,941 [错误] Traceback (most recent call last):
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\cv_runner.py", line 642, in run_cross_validation
+    model, optimizer, metric_logger = train(
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\trainer.py", line 941, in train
+    train_loader = build_dataloader(config, data, split="train", mode=config.model.mode,
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\data_loading\datasets.py", line 365, in build_dataloader
+    return torch.utils.data.DataLoader(dataset, **kwargs)
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\dataloader.py", line 376, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\sampler.py", line 164, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+2026-07-05 20:02:01,942 [信息] 
+2026-07-05 20:02:01,942 [信息] ######################################################################
+2026-07-05 20:02:01,942 [信息]   >>> 开始处理 fold_5 (第5/5折) <<<
+2026-07-05 20:02:01,943 [信息] ######################################################################
+2026-07-05 20:02:01,943 [信息] ======================================================================
+2026-07-05 20:02:01,943 [信息]   Fold 5 - 训练开始
+2026-07-05 20:02:01,944 [信息] ======================================================================
+2026-07-05 20:02:01,945 [信息] 随机种子已设置: 2031
+2026-07-05 20:02:01,945 [信息] 已启用cudnn.benchmark（自动寻找最优卷积算法）
+2026-07-05 20:02:01,946 [信息]   [训练配置]
+2026-07-05 20:02:01,947 [信息]     批次大小: 4 x 梯度累积2步 = 有效批次8
+2026-07-05 20:02:01,947 [信息]     总训练轮数: 12 (含8主轮+4衰减轮)
+2026-07-05 20:02:01,947 [信息]     预热轮数: 2
+2026-07-05 20:02:01,948 [信息]     学习率: 0.0001
+2026-07-05 20:02:01,948 [信息]     权重衰减: 0.0003
+2026-07-05 20:02:01,949 [信息]     梯度裁剪: 1.0
+2026-07-05 20:02:01,949 [信息]     AMP混合精度: 启用
+2026-07-05 20:02:01,950 [信息]     正则化: none (lambda=0.0003)
+2026-07-05 20:02:01,950 [信息]     任务类型: surv
+2026-07-05 20:02:01,951 [信息]     融合策略: caugf
+2026-07-05 20:02:01,951 [信息]   [GPU显存-训练前] 已分配: 0.00GB / 已保留: 0.00GB / 总量: 15.99GB / 空闲: 15.99GB / 使用率: 0.0%
+2026-07-05 20:02:01,952 [错误]   [fold_5] 训练/测试失败: num_samples should be a positive integer value, but got num_samples=0
+2026-07-05 20:02:01,953 [错误] Traceback (most recent call last):
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\cv_runner.py", line 642, in run_cross_validation
+    model, optimizer, metric_logger = train(
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\training\trainer.py", line 941, in train
+    train_loader = build_dataloader(config, data, split="train", mode=config.model.mode,
+  File "D:\xcjhhh\DealWith\yu_hou_prognosis\src\data_loading\datasets.py", line 365, in build_dataloader
+    return torch.utils.data.DataLoader(dataset, **kwargs)
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\dataloader.py", line 376, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "C:\Users\4080super\.conda\envs\xcjenv\lib\site-packages\torch\utils\data\sampler.py", line 164, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+2026-07-05 20:02:01,953 [错误] 所有折均失败! 无法生成CV汇总
+2026-07-05 20:02:01,953 [信息] 训练完成！CV结果已保存至 experiments/default/results/
