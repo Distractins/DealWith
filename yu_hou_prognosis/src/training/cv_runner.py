@@ -541,7 +541,7 @@ def run_cross_validation(config) -> Dict[str, Any]:
 
     logger = setup_logger(
         log_file=log_file,
-        level=getattr(logging, config.logging.level.upper(), logging.INFO),
+        level=config.logging.level,
         language=config.logging.language,
     )
 
