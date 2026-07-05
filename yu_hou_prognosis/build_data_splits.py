@@ -164,7 +164,7 @@ def build_full_data_splits(config):
         survival_map[pid] = {
             "e": float(row[event_col]),
             "t": float(row[time_col]),
-            "g": str(row.get("t", "")),  # 用生存时间作为分组标签（surv任务下可不使用）
+            "g": 0,  # surv任务下标签不使用，填充占位值
         }
 
     print(f"[信息] 基因组特征映射: {len(genomic_map)} 个病人")
