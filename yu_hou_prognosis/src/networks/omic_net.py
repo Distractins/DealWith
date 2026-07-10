@@ -120,6 +120,10 @@ class MaxNet(nn.Module):
         """
         x = kwargs["x_omic"].float()
 
+        # 数值安全: 裁剪极端输入值，防止fp16下Linear层溢出
+        # StandardScaler后特征应被归一化为均值0、标准差1，此clip仅作安全兜底
+        x = torch.clamp(x, min=-50.0, max=50.0)
+
         # 编码
         features = self.encoder(x)
         features = self.proj(features)

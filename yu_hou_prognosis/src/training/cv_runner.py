@@ -242,6 +242,8 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
     logger.info(f"  短ID→长slide映射: {len(short_to_single)} 个")
 
     # ---- 构建每折完整数据 ----
+    from sklearn.preprocessing import StandardScaler
+
     output_folds = {}
     total_missing = 0
     for fold_id in sorted(id_splits.keys()):
@@ -249,6 +251,8 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
         fold_key = f"fold_{fold_id}" if isinstance(fold_id, int) else str(fold_id)
         output_folds[fold_key] = {}
 
+        # 第一步：收集train和test的原始数据
+        raw_splits = {}
         for split_name in ["train", "test"]:
             if split_name not in fold_data:
                 continue
@@ -277,41 +281,95 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
 
             n = len(x_omic_list)
             if n > 0:
-                # 检查汇总后的数据是否有NaN
-                x_omic_arr = np.array(x_omic_list, dtype=np.float32)
+                x_omic_arr = np.array(x_omic_list, dtype=np.float64)
                 e_arr = np.array(e_list, dtype=np.float32)
                 t_arr = np.array(t_list, dtype=np.float32)
-
-                nan_in_omic = np.any(np.isnan(x_omic_arr))
-                nan_in_e = np.any(np.isnan(e_arr))
-                nan_in_t = np.any(np.isnan(t_arr))
-
-                if nan_in_omic or nan_in_e or nan_in_t:
-                    logger.warning(
-                        f"  [数据警告] {fold_key}/{split_name}: "
-                        f"omic NaN={nan_in_omic}, event NaN={nan_in_e}, time NaN={nan_in_t}"
-                    )
-                    # 用0替换NaN
-                    if nan_in_omic:
-                        x_omic_arr = np.nan_to_num(x_omic_arr, nan=0.0, posinf=0.0, neginf=0.0)
-                    if nan_in_e:
-                        e_arr = np.nan_to_num(e_arr, nan=0.0)
-                    if nan_in_t:
-                        t_arr = np.nan_to_num(t_arr, nan=0.0)
             else:
-                x_omic_arr = np.array([], dtype=np.float32)
+                x_omic_arr = np.array([], dtype=np.float64)
                 e_arr = np.array([], dtype=np.float32)
                 t_arr = np.array([], dtype=np.float32)
 
-            output_folds[fold_key][split_name] = {
+            raw_splits[split_name] = {
                 "x_path": x_path_list,
                 "x_omic": x_omic_arr,
                 "e": e_arr,
                 "t": t_arr,
                 "g": g_list,
+                "n": n,
+                "missing": fold_missing,
             }
-            logger.info(f"  {fold_key}/{split_name}: {n}病人 (跳过{fold_missing})")
             total_missing += fold_missing
+
+        # 第二步：基于训练集拟合StandardScaler，同时应用于训练集和测试集
+        if "train" in raw_splits and raw_splits["train"]["n"] > 0:
+            train_omic = raw_splits["train"]["x_omic"]
+
+            # 记录缩放前的数值范围
+            logger.info(
+                f"  {fold_key} 基因组特征(缩放前): "
+                f"范围=[{train_omic.min():.2f}, {train_omic.max():.2f}], "
+                f"均值={train_omic.mean():.2f}, 标准差={train_omic.std():.2f}"
+            )
+
+            # StandardScaler: 每列独立标准化到均值0、标准差1
+            scaler = StandardScaler()
+            scaler.fit(train_omic)
+            logger.info(
+                f"  {fold_key} StandardScaler已拟合 (基于{raw_splits['train']['n']}个训练样本)"
+            )
+
+            for split_name in ["train", "test"]:
+                rs = raw_splits.get(split_name)
+                if rs is None or rs["n"] == 0:
+                    continue
+
+                x_omic_arr = rs["x_omic"]
+                if len(x_omic_arr) > 0:
+                    # NaN检测与修复
+                    nan_mask = np.isnan(x_omic_arr)
+                    if nan_mask.any():
+                        logger.warning(
+                            f"  [数据警告] {fold_key}/{split_name}: "
+                            f"含 {nan_mask.sum()} 个NaN，已用0替换"
+                        )
+                        x_omic_arr = np.nan_to_num(x_omic_arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+                    # 应用标准化
+                    x_omic_arr = scaler.transform(x_omic_arr).astype(np.float32)
+
+                    # 检查缩放后的数值范围
+                    arr_max = np.abs(x_omic_arr).max()
+                    if arr_max > 10:
+                        logger.warning(
+                            f"  [数据警告] {fold_key}/{split_name}: "
+                            f"缩放后仍有极端值: max_abs={arr_max:.2f}"
+                        )
+
+                output_folds[fold_key][split_name] = {
+                    "x_path": rs["x_path"],
+                    "x_omic": x_omic_arr if len(x_omic_arr) > 0 else np.array([], dtype=np.float32),
+                    "e": rs["e"],
+                    "t": rs["t"],
+                    "g": rs["g"],
+                }
+                logger.info(
+                    f"  {fold_key}/{split_name}: {rs['n']}病人 (跳过{rs['missing']})"
+                    f"{' | 已标准化' if split_name in ('train', 'test') and rs['n'] > 0 else ''}"
+                )
+        else:
+            # 无训练数据时不做标准化（异常情况）
+            for split_name in ["train", "test"]:
+                rs = raw_splits.get(split_name)
+                if rs is None:
+                    continue
+                output_folds[fold_key][split_name] = {
+                    "x_path": rs["x_path"],
+                    "x_omic": rs["x_omic"].astype(np.float32) if len(rs["x_omic"]) > 0 else np.array([], dtype=np.float32),
+                    "e": rs["e"],
+                    "t": rs["t"],
+                    "g": rs["g"],
+                }
+                logger.info(f"  {fold_key}/{split_name}: {rs['n']}病人 (跳过{rs['missing']})")
 
     logger.info(f"  总跳过(缺数据): {total_missing}")
 
