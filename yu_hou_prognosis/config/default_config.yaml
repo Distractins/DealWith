@@ -150,8 +150,8 @@ model:
     hidden_dim: 64
     # 融合输出维度
     output_dim: 64
-    # Dropout比率
-    dropout: 0.25
+    # Dropout比率 (提高以对抗过拟合)
+    dropout: 0.35
 
     # ---- CAUGF专用参数 ----
     caugf:
@@ -208,13 +208,13 @@ training:
   batch_size: 4
   # 梯度累积步数（等效增大batch_size = batch_size * accumulation_steps）
   gradient_accumulation_steps: 2
-  # DataLoader工作进程数
+  # DataLoader工作进程数 (Windows必须为0，否则触发shm.dll崩溃)
   num_workers: 0
-  # 是否锁页内存
-  pin_memory: true
-  # 是否使用non_blocking传输
-  non_blocking: true
-  # 数据预取因子
+  # 是否锁页内存 (Windows下建议关闭，避免CUDA IPC共享内存问题)
+  pin_memory: false
+  # 是否使用non_blocking传输 (Windows下建议关闭)
+  non_blocking: false
+  # 数据预取因子 (num_workers=0时无效)
   prefetch_factor: 2
 
   # ---- 优化器 ----
@@ -223,8 +223,8 @@ training:
     type: "adam"
     # 学习率
     lr: 0.0001
-    # 权重衰减
-    weight_decay: 0.0003
+    # 权重衰减 (增大以抑制过拟合)
+    weight_decay: 0.001
     # Adam betas
     betas: [0.9, 0.999]
     # AdaBound最终学习率
@@ -248,9 +248,9 @@ training:
 
   # ---- 混合精度训练 (AMP) ----
   amp:
-    # 是否启用自动混合精度
-    enabled: true
-    # 精度类型: float16 / bfloat16 (4080 Super推荐float16)
+    # 是否启用自动混合精度 (暂时关闭避免FP16导致梯度图丢失)
+    enabled: false
+    # 精度类型: float16 / bfloat16
     dtype: "float16"
 
   # ---- 损失函数权重 ----
@@ -262,7 +262,18 @@ training:
     # 正则化损失权重
     lambda_reg: 0.0003
     # 正则化类型: none / path / mm / all / omic
-    reg_type: "none"
+    reg_type: "path"
+
+  # ---- 早停策略 ----
+  early_stopping:
+    # 是否启用早停
+    enabled: true
+    # 监控指标: cindex / loss
+    monitor: "cindex"
+    # 容忍轮数（连续N轮无改善则停止）
+    patience: 5
+    # 最小改善阈值
+    min_delta: 0.001
 
   # ---- 分类任务损失（task=ncls时生效） ----
   classification:

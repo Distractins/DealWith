@@ -269,6 +269,15 @@ class ClassificationLossConfig:
 
 
 @dataclass
+class EarlyStoppingConfig:
+    """早停策略配置"""
+    enabled: bool = True
+    monitor: str = "cindex"
+    patience: int = 5
+    min_delta: float = 0.001
+
+
+@dataclass
 class CheckpointConfig:
     """断点管理配置"""
     save_every: int = 1
@@ -307,6 +316,7 @@ class TrainingConfig:
     act_type: str = "none"
     init_type: str = "none"
     init_gain: float = 0.02
+    early_stopping: EarlyStoppingConfig = field(default_factory=EarlyStoppingConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
     gpu_monitor: GPUMonitorConfig = field(default_factory=GPUMonitorConfig)
 
@@ -807,6 +817,10 @@ def print_config(config: ConfigBundle, logger: Optional[logging.Logger] = None) 
     lines.append(f"  学习率       : {config.training.optimizer.lr}")
     lines.append(f"  总训练轮数   : {config.training.scheduler.n_epochs + config.training.scheduler.n_epochs_decay}")
     lines.append(f"  AMP混合精度  : {config.training.amp.enabled}")
+    lines.append(f"  早停策略     : {'启用' if config.training.early_stopping.enabled else '禁用'} "
+                 f"(patience={config.training.early_stopping.patience})")
+    lines.append(f"  正则化       : {config.training.loss.reg_type} "
+                 f"(lambda={config.training.loss.lambda_reg})")
     lines.append(f"  GPU ID       : {config.training.gpu_id}")
     lines.append("-" * 70)
     lines.append(f"  基因组特征   : {config.model.omic.input_dim}维 -> {config.data.feature_selection.n_features_final}维(筛选后)")

@@ -163,7 +163,7 @@ class CoxPartialLikelihoodLoss(nn.Module):
             censor: [B] 删失标记（1=事件, 0=删失）
 
         返回:
-            loss: 标量损失值
+            loss: 标量损失值（始终保留计算图，确保梯度可流动）
         """
         # 确保张量在相同设备上
         device = hazard_pred.device
@@ -173,7 +173,19 @@ class CoxPartialLikelihoodLoss(nn.Module):
 
         n = hazard_pred.size(0)
         if n < 2:
-            return torch.tensor(0.0, device=device)
+            # 返回一个小非零值，保留计算图
+            return hazard_pred.mean() * 0.0 + torch.tensor(0.0, device=device)
+
+        # ---- 检测batch事件多样性 ----
+        n_events = censor.sum().item()
+        if n_events == 0 or n_events == n:
+            # 该batch全为删失或全为事件，Cox部分似然无有效梯度
+            # 返回MSE-style损失作为fallback（始终有梯度）：
+            # 鼓励hazard_pred的方差>0，避免模型输出常数
+            hazard_std = hazard_pred.std()
+            # 目标: 让模型预测有一定区分度
+            loss_fallback = torch.relu(0.01 - hazard_std)
+            return loss_fallback
 
         # 检测并裁剪极端值，防止溢出
         MAX_LOGIT = 50.0  # exp(50) ≈ 5.2e21，安全范围
@@ -197,9 +209,9 @@ class CoxPartialLikelihoodLoss(nn.Module):
         log_risk = theta - (theta_max + torch.log(risk_sum + 1e-8))
         loss = -torch.mean(censor * log_risk)
 
-        # 安全检查: 如果loss为NaN/Inf，返回0（由梯度裁剪处理）
+        # 安全检查: 如果loss为NaN/Inf，使用fallback
         if torch.isnan(loss) or torch.isinf(loss):
-            loss = torch.tensor(0.0, device=device)
+            loss = hazard_pred.mean() * 0.0 + torch.tensor(0.0, device=device)
 
         return loss
 

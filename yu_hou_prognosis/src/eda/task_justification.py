@@ -143,7 +143,225 @@ class TaskJustification:
         plt.close()
         print(f"  N分期KM曲线已保存: {save_path}")
 
-    def generate_justification_report(self) -> str:
+    def analyze_data_suitability(self) -> Dict:
+        """
+        分析数据是否适合做生存预后预测。
+
+        检查项:
+            1. 事件率 (删失比例): 事件太少则Cox模型难以拟合
+            2. 样本量: 小样本+高维特征容易过拟合
+            3. 生存时间分布: 是否集中在某时间点
+            4. 基因组特征方差: 低方差特征无预测价值
+            5. 每折事件数: 交叉验证中每折是否有足够事件
+
+        返回:
+            dict: 各项检查结果和建议
+        """
+        if self.df is None:
+            self.load_data()
+
+        results = {
+            "suitable": True,
+            "warnings": [],
+            "errors": [],
+            "checks": {},
+        }
+
+        df = self.df
+
+        # 查找事件列和时间列
+        event_col = None
+        for col in ['event', 'OS', 'os', 'censored']:
+            if col in df.columns:
+                event_col = col
+                break
+
+        time_col = None
+        for col in ['Survival months', 'OS.time', 'os.time', 'survival_time', 'Survival months']:
+            if col in df.columns:
+                time_col = col
+                break
+
+        if event_col is None or time_col is None:
+            results["suitable"] = False
+            results["errors"].append("无法找到事件列或生存时间列")
+            return results
+
+        events = df[event_col].values
+        times = df[time_col].values
+
+        n_total = len(df)
+        n_events = int(events.sum())
+        event_rate = n_events / n_total if n_total > 0 else 0
+
+        # ---- 检查1: 事件率 ----
+        results["checks"]["event_rate"] = {
+            "total": n_total,
+            "events": n_events,
+            "censored": n_total - n_events,
+            "event_rate": f"{event_rate:.1%}",
+        }
+        if event_rate < 0.15:
+            results["warnings"].append(
+                f"事件率仅{event_rate:.1%}（{n_events}/{n_total}），"
+                f"事件太少会导致Cox模型训练困难，C-index方差大。"
+                f"建议: 考虑延长随访时间或合并其他终点事件。"
+            )
+            results["suitable"] = False
+        elif event_rate < 0.25:
+            results["warnings"].append(
+                f"事件率偏低（{event_rate:.1%}），模型可能过拟合。"
+                f"建议: 增加正则化强度，降低模型复杂度。"
+            )
+        else:
+            results["checks"]["event_rate"]["status"] = "ok"
+
+        # ---- 检查2: 样本量 ----
+        results["checks"]["sample_size"] = {"total": n_total}
+        if n_total < 100:
+            results["errors"].append(
+                f"样本量仅{n_total}例，对深度学习模型严重不足。"
+                f"建议: 使用传统Cox回归或随机生存森林。"
+            )
+            results["suitable"] = False
+        elif n_total < 200:
+            results["warnings"].append(
+                f"样本量{n_total}例偏少，5折CV每折仅~{n_total//5}例训练。"
+                f"建议: 使用强正则化、早停、减少模型参数。"
+            )
+        else:
+            results["checks"]["sample_size"]["status"] = "ok"
+
+        # ---- 检查3: 生存时间分布 ----
+        results["checks"]["survival_time"] = {
+            "min": f"{times.min():.1f}",
+            "max": f"{times.max():.1f}",
+            "median": f"{np.median(times):.1f}",
+            "mean": f"{times.mean():.1f}",
+            "std": f"{times.std():.1f}",
+        }
+        if times.std() < 1.0:
+            results["warnings"].append("生存时间标准差极小，几乎无变异，无法预测。")
+            results["suitable"] = False
+
+        # ---- 检查4: 基因组特征分析 ----
+        # 找到数值特征列
+        exclude_patterns = [
+            "tcga", "id", "indexes", "event", "censored", "survival",
+            "vital_status", "survival_source", "tumor_grade", "tumor_stage",
+            "histological_type", "suspicious", "gender", "age_at_diagnosis",
+            "codeletion", "idh mutation",
+        ]
+        feature_cols = []
+        for c in df.columns:
+            cl = c.lower()
+            if any(p in cl for p in exclude_patterns):
+                continue
+            if df[c].dtype in (np.float64, np.float32, np.int64, np.int32):
+                feature_cols.append(c)
+
+        n_features = len(feature_cols)
+        results["checks"]["genomic_features"] = {
+            "total_features": n_features,
+        }
+
+        if n_features > 0:
+            feature_data = df[feature_cols].values
+            # NaN检查
+            nan_count = np.isnan(feature_data).sum()
+            results["checks"]["genomic_features"]["nan_count"] = int(nan_count)
+
+            # 零方差/极低方差特征
+            variances = np.nanvar(feature_data, axis=0)
+            zero_var = int((variances < 1e-8).sum())
+            low_var = int((variances < 0.01).sum())
+
+            results["checks"]["genomic_features"]["zero_variance"] = zero_var
+            results["checks"]["genomic_features"]["low_variance"] = low_var
+
+            if zero_var > n_features * 0.1:
+                results["warnings"].append(
+                    f"{zero_var}/{n_features}个基因组特征方差为零，"
+                    f"建议启用特征选择（当前variance_threshold）。"
+                )
+            if low_var > n_features * 0.5:
+                results["warnings"].append(
+                    f"{low_var}/{n_features}个基因组特征方差极低（<0.01），"
+                    f"大量特征可能无预测价值。"
+                )
+
+        # ---- 检查5: 5折CV事件分布模拟 ----
+        # 模拟5折随机划分，检查每折的事件数分布
+        results["checks"]["cv_event_distribution"] = {}
+        fold_size = n_total // 5
+        # 假设均匀分布，每折事件数近似
+        expected_events_per_fold = n_events / 5
+        if expected_events_per_fold < 5:
+            results["errors"].append(
+                f"5折CV每折平均仅{expected_events_per_fold:.1f}个事件，"
+                f"某些折可能出现0事件导致Cox损失无梯度。"
+                f"建议: 减少折数（如3折）或使用分层抽样确保每折有足够事件。"
+            )
+            results["suitable"] = False
+        elif expected_events_per_fold < 10:
+            results["warnings"].append(
+                f"5折CV每折平均{expected_events_per_fold:.1f}个事件，"
+                f"事件较少时建议启用分层抽样，确保每折事件分布均衡。"
+            )
+
+        # ---- 综合判断 ----
+        results["checks"]["overall_suitability"] = {
+            "verdict": "适合" if results["suitable"] else "存在风险",
+            "n_warnings": len(results["warnings"]),
+            "n_errors": len(results["errors"]),
+        }
+
+        return results
+
+    def print_suitability_report(self, results: Dict = None):
+        """打印数据适合性分析报告"""
+        if results is None:
+            results = self.analyze_data_suitability()
+
+        print("\n" + "=" * 70)
+        print("  数据适合性分析 — 生存预后预测可行性评估")
+        print("=" * 70)
+
+        # 基本信息
+        checks = results.get("checks", {})
+        er = checks.get("event_rate", {})
+        print(f"\n  样本量: {er.get('total', 'N/A')}")
+        print(f"  事件数: {er.get('events', 'N/A')} | 删失数: {er.get('censored', 'N/A')}")
+        print(f"  事件率: {er.get('event_rate', 'N/A')}")
+
+        st = checks.get("survival_time", {})
+        print(f"  生存时间: "
+              f"中位={st.get('median', 'N/A')}月, "
+              f"范围=[{st.get('min', 'N/A')}, {st.get('max', 'N/A')}]月, "
+              f"标准差={st.get('std', 'N/A')}")
+
+        gf = checks.get("genomic_features", {})
+        print(f"  基因组特征: {gf.get('total_features', 'N/A')}维, "
+              f"零方差={gf.get('zero_variance', 'N/A')}, "
+              f"低方差={gf.get('low_variance', 'N/A')}")
+
+        # 警告和错误
+        if results["warnings"]:
+            print(f"\n  ⚠ 警告 ({len(results['warnings'])}条):")
+            for i, w in enumerate(results["warnings"], 1):
+                print(f"    {i}. {w}")
+
+        if results["errors"]:
+            print(f"\n  ❌ 错误 ({len(results['errors'])}条):")
+            for i, e in enumerate(results["errors"], 1):
+                print(f"    {i}. {e}")
+
+        overall = checks.get("overall_suitability", {})
+        verdict = "✅ 数据适合做生存预后预测" if results["suitable"] else "⚠️ 数据存在风险，建议先解决上述问题"
+        print(f"\n  综合判定: {verdict}")
+        print("=" * 70)
+
+        return results
         """
         生成任务合理性论证报告。
 

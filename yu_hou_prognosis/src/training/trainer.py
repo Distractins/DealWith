@@ -63,7 +63,13 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.cuda.amp import GradScaler, autocast
+# 兼容新旧PyTorch版本的AMP API
+try:
+    from torch.amp import GradScaler, autocast
+    _AMP_NEW_API = True
+except ImportError:
+    from torch.cuda.amp import GradScaler, autocast
+    _AMP_NEW_API = False
 
 from src.networks.pathomic_net import PathomicNet
 from src.losses.cox_loss import CoxPartialLikelihoodLoss, CoxLossWithL2
@@ -279,10 +285,8 @@ class GradualWarmupScheduler:
 
     def step(self, epoch=None):
         if self.finished and self.after_scheduler:
-            if epoch is None:
-                self.after_scheduler.step()
-            else:
-                self.after_scheduler.step(epoch - self.total_epoch)
+            # 新版PyTorch: scheduler.step()不接受epoch参数
+            self.after_scheduler.step()
             return
 
         if epoch is None:
@@ -295,7 +299,7 @@ class GradualWarmupScheduler:
                 param_group["lr"] = base_lr
             self.finished = True
             if self.after_scheduler:
-                self.after_scheduler.step(0)
+                self.after_scheduler.step()
             return
 
         # 线性预热: lr = min_lr + (base_lr - min_lr) * (epoch/total_epoch)
@@ -534,8 +538,21 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
         censor = e.to(device, non_blocking=config.training.non_blocking)
         labels = g.to(device, non_blocking=config.training.non_blocking)
 
+        # ---- 检查batch的事件多样性 (防止全部event=0或全部event=1) ----
+        censor_np = e.numpy() if hasattr(e, 'numpy') else e.cpu().numpy()
+        unique_events = np.unique(censor_np)
+        if len(unique_events) < 2:
+            # 该batch所有样本事件一致，Cox损失无法计算有效梯度，跳过
+            if logger and batch_idx < 3:
+                logger.warning(
+                    f"  [批次跳过] batch {batch_idx}: 所有样本event={unique_events[0]:.0f}，"
+                    f"Cox部分似然无有效梯度，跳过此batch"
+                )
+            continue
+
         # ---- 前向传播 (AMP autocast) ----
-        with autocast(enabled=use_amp):
+        amp_ctx = autocast("cuda", enabled=use_amp) if _AMP_NEW_API else autocast(enabled=use_amp)
+        with amp_ctx:
             features, hazard = model(x_path=x_path, x_omic=x_omic)
 
             # NaN/Inf 检测：模型输出
@@ -576,6 +593,13 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
             total_loss = total_loss / accum_steps
 
         # ---- 反向传播 ----
+        # 安全检查: 确保loss有计算图
+        if not total_loss.requires_grad:
+            if logger and batch_idx < 3:
+                logger.warning(
+                    f"  [梯度警告] batch {batch_idx}: total_loss无计算图，跳过反向传播"
+                )
+            continue
         scaler.scale(total_loss).backward()
 
         # ---- 梯度累积步 ----
@@ -850,7 +874,7 @@ def _load_checkpoint(model, optimizer, scaler, scheduler, metric_logger,
 
     latest_ckpt = ckpt_files[-1]
     try:
-        ckpt = torch.load(str(latest_ckpt), map_location="cpu")
+        ckpt = torch.load(str(latest_ckpt), map_location="cpu", weights_only=False)
 
         model.load_state_dict(ckpt["model_state_dict"])
         optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -1003,7 +1027,7 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
 
     # ---- 初始化AMP ----
     use_amp = config.training.amp.enabled
-    scaler = GradScaler(enabled=use_amp)
+    scaler = GradScaler("cuda", enabled=use_amp) if _AMP_NEW_API else GradScaler(enabled=use_amp)
 
     # ---- 初始化指标记录器 ----
     metric_logger = MetricLogger(logger=logger)
@@ -1098,6 +1122,17 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
             metric_logger.track_best(epoch + 1, val_cindex, model)
         else:
             metric_logger.track_best(epoch + 1, train_cindex, model)
+
+        # ---- 早停检查 ----
+        es_cfg = getattr(config.training, 'early_stopping', None)
+        if es_cfg is not None and getattr(es_cfg, 'enabled', False):
+            if metric_logger.no_improve_count >= es_cfg.patience:
+                logger.info(
+                    f"  [早停] 连续{es_cfg.patience}轮无改善 "
+                    f"(最佳C-index={metric_logger.best_cindex:.4f}，第{metric_logger.best_epoch}轮)，"
+                    f"提前结束训练"
+                )
+                break
 
         # ---- 每轮中文日志 ----
         epoch_time = time.time() - epoch_start_time

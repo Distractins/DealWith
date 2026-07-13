@@ -178,7 +178,7 @@ def _run_eda(config, logger):
     except Exception as e:
         logger.error(f"图像质量EDA失败: {e}")
 
-    # 任务论证
+    # 任务论证 + 数据适合性分析
     try:
         from src.eda.task_justification import TaskJustification
         genomic_csv = config.resolve_path(config.data.genomic_csv)
@@ -188,6 +188,10 @@ def _run_eda(config, logger):
         justifier.plot_n_stage_km()
         report = justifier.generate_justification_report()
         logger.info(report)
+
+        # 数据适合性分析
+        logger.info("进行数据适合性分析...")
+        justifier.print_suitability_report()
     except Exception as e:
         logger.error(f"任务论证失败: {e}")
 

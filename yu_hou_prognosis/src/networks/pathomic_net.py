@@ -115,6 +115,10 @@ class PathomicNet(nn.Module):
             label_dim = 3  # N0/N1/N2
         else:
             label_dim = 1
+
+        # 分类器Dropout（减少过拟合）
+        classifier_dropout = getattr(config.model.fusion, 'dropout', 0.25)
+        self.classifier_dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.model.fusion.output_dim, label_dim)
 
         # ---- 5) 输出范围参数 ----
@@ -183,6 +187,7 @@ class PathomicNet(nn.Module):
         fused_feat = self.fusion(patient_path_feat, patient_omic_feat)  # [B, mmhid]
 
         # ---- 风险预测 ----
+        fused_feat = self.classifier_dropout(fused_feat)
         hazard = self.classifier(fused_feat)  # [B, label_dim]
 
         # 生存分析输出处理
@@ -191,8 +196,7 @@ class PathomicNet(nn.Module):
             if isinstance(self.act, nn.Sigmoid):
                 hazard = hazard * self.output_range + self.output_shift
         else:
-            # surv任务: 裁剪极端值防止exp溢出
-            # 数值安全: exp(20) ≈ 4.8e8 仍在float32范围内
+            # surv任务: 裁剪极端值防止exp溢出，同时保留梯度
             MAX_LOGIT = 20.0
             hazard = torch.clamp(hazard, min=-MAX_LOGIT, max=MAX_LOGIT)
 

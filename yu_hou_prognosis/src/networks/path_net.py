@@ -157,7 +157,7 @@ class PathNet2(nn.Module):
         print(f"[PathNet2] 加载预训练权重: {ckpt_path}")
 
         try:
-            ckpt = torch.load(ckpt_path, map_location="cpu")
+            ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
             state_dict = _extract_state_dict(ckpt)
             state_dict = _clean_state_dict(state_dict)
 
