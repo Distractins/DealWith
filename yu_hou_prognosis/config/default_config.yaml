@@ -209,7 +209,7 @@ training:
   # 梯度累积步数（等效增大batch_size = batch_size * accumulation_steps）
   gradient_accumulation_steps: 2
   # DataLoader工作进程数
-  num_workers: 4
+  num_workers: 0
   # 是否锁页内存
   pin_memory: true
   # 是否使用non_blocking传输
