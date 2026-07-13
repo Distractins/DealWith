@@ -103,6 +103,24 @@ def _map_n_stage_to_3class(raw_label) -> int:
     return mapping[s]
 
 
+def _map_n_stage_to_binary(raw_label) -> int:
+    """
+    N分期二分类映射 (淋巴结转移预测):
+        N0 -> 0 (无淋巴结转移)
+        N1/N1a/N1b/N1c/N2/N2a/N2b -> 1 (有淋巴结转移)
+    """
+    s = _normalize_n_stage(raw_label)
+    if s == "N0":
+        return 0
+    elif s in ("N1", "N1A", "N1B", "N1C", "N2", "N2A", "N2B"):
+        return 1
+    else:
+        raise ValueError(
+            f"不支持的N分期标签: raw_label={raw_label}, normalized={s}。"
+            f"期望N0/N1/N1a/N1b/N1c/N2/N2a/N2b"
+        )
+
+
 def _convert_labels_by_task(task: str, label_mode: str, labels: List) -> List:
     """
     根据任务配置转换标签格式。
@@ -130,6 +148,8 @@ def _convert_labels_by_task(task: str, label_mode: str, labels: List) -> List:
                     raise ValueError(
                         f"标签转换失败: label_mode={label_mode}, raw_label={g}"
                     )
+        elif task == "n_binary":
+            converted.append(_map_n_stage_to_binary(g))
         else:
             # surv任务：保持原值
             try:

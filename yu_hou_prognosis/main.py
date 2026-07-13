@@ -178,7 +178,28 @@ def _run_eda(config, logger):
     except Exception as e:
         logger.error(f"图像质量EDA失败: {e}")
 
-    # 任务论证 + 数据适合性分析
+    # ================================================================
+    # 第一步: 数据质量预检 + 任务方向推荐 (最重要!)
+    # ================================================================
+    try:
+        from src.eda.data_quality_check import DataQualityChecker
+        genomic_csv = config.resolve_path(config.data.genomic_csv)
+        if genomic_csv.exists():
+            logger.info("=" * 60)
+            logger.info("  数据质量预检 — 判断数据适合什么预测任务")
+            logger.info("=" * 60)
+            checker = DataQualityChecker(str(genomic_csv))
+            checker.load()
+            checker.analyze()
+            checker.print_report()
+        else:
+            logger.warning(f"基因组数据文件不存在，跳过数据预检: {genomic_csv}")
+    except Exception as e:
+        logger.error(f"数据质量预检失败: {e}")
+
+    # ================================================================
+    # 第二步: 任务论证 + KM曲线
+    # ================================================================
     try:
         from src.eda.task_justification import TaskJustification
         genomic_csv = config.resolve_path(config.data.genomic_csv)

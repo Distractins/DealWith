@@ -164,20 +164,83 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
     time_col = "Survival months"
 
     # 过滤数值特征列
+    # 方案: 识别基因特征类型，区分突变(_mut, 二值)和RNA-seq(_rnaseq, 连续值)
     exclude_patterns = [
         "tcga", "id", "indexes", "event", "censored", "survival",
         "vital_status", "survival_source", "tumor_grade", "tumor_stage",
         "histological_type", "suspicious", "gender", "age_at_diagnosis",
         "codeletion", "idh mutation",
     ]
-    feature_cols = []
+    # 短列名（单个字母）通常是临床元数据(t, n, m)，不是基因特征
+    short_meta_cols = {'t', 'n', 'm'}
+
+    mut_cols = []     # 突变特征 (_mut后缀, 0/1二值)
+    rnaseq_cols = []  # RNA-seq特征 (_rnaseq后缀, 连续值)
+    other_cols = []   # 其他数值列
+
     for c in df.columns:
         cl = c.lower()
+        # 跳过已知元数据列
         if any(p in cl for p in exclude_patterns):
             continue
-        if df[c].dtype in (np.float64, np.float32, np.int64, np.int32):
-            feature_cols.append(c)
-    logger.info(f"  基因组特征维度: {len(feature_cols)}")
+        # 跳过单字母列名 (t, n, m 等临床分期)
+        if c.strip().lower() in short_meta_cols:
+            continue
+        if not df[c].dtype in (np.float64, np.float32, np.int64, np.int32):
+            continue
+
+        # 按后缀分组
+        if '_mut' in cl:
+            mut_cols.append(c)
+        elif '_rnaseq' in cl:
+            rnaseq_cols.append(c)
+        else:
+            other_cols.append(c)
+
+    logger.info(f"  基因组特征: 突变={len(mut_cols)}, RNA-seq={len(rnaseq_cols)}, 其他={len(other_cols)}")
+
+    # ---- 特征选择策略 ----
+    # 突变特征: 全部保留 (500维, 每个都有明确生物学意义)
+    # RNA-seq特征: 方差过滤保留top (默认500维, 避免维度灾难)
+    # 其他特征: 方差过滤保留top-100
+
+    max_rnaseq = getattr(config.data.genomic, 'max_rnaseq_features', 500)
+    max_other = getattr(config.data.genomic, 'max_other_features', 50)
+
+    selected_cols = list(mut_cols)  # 突变特征全部保留
+    selected_col_types = ['mut'] * len(mut_cols)
+
+    # RNA-seq: 按方差选择top
+    if rnaseq_cols:
+        rnaseq_data = df[rnaseq_cols].fillna(0.0).replace([np.inf, -np.inf], 0.0)
+        rnaseq_var = rnaseq_data.var()
+        # 排除零方差特征
+        rnaseq_var = rnaseq_var[rnaseq_var > 1e-8]
+        top_n = min(max_rnaseq, len(rnaseq_var))
+        if top_n > 0:
+            top_rnaseq = rnaseq_var.nlargest(top_n).index.tolist()
+            selected_cols.extend(top_rnaseq)
+            selected_col_types.extend(['rnaseq'] * len(top_rnaseq))
+            logger.info(f"  RNA-seq特征选择: {len(rnaseq_cols)} -> {len(top_rnaseq)} (方差top-{top_n})")
+        else:
+            logger.warning(f"  RNA-seq特征全部零方差，已丢弃")
+
+    # 其他特征: 按方差选择top
+    if other_cols:
+        other_data = df[other_cols].fillna(0.0).replace([np.inf, -np.inf], 0.0)
+        other_var = other_data.var()
+        other_var = other_var[other_var > 1e-8]
+        top_n = min(max_other, len(other_var))
+        if top_n > 0:
+            top_other = other_var.nlargest(top_n).index.tolist()
+            selected_cols.extend(top_other)
+            selected_col_types.extend(['other'] * len(top_other))
+            logger.info(f"  其他特征选择: {len(other_cols)} -> {len(top_other)} (方差top-{top_n})")
+
+    feature_cols = selected_cols
+
+    total_raw = len(mut_cols) + len(rnaseq_cols) + len(other_cols)
+    logger.info(f"  基因组特征维度: {total_raw} -> {len(feature_cols)} (突变全保留+RNA-seq方差过滤)")
 
     # 检查特征数据中的NaN情况
     feature_df = df[feature_cols]
@@ -197,18 +260,48 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
         config.data.genomic.input_dim = len(feature_cols)
         config.model.omic.input_dim = len(feature_cols)
 
+    # 检测N分期列名 (用于ncls/n_binary任务标签)
+    n_stage_col = None
+    for candidate in ['n', 'N', 'n_stage', 'pathologic_n', 'node_stage']:
+        if candidate in df.columns:
+            n_stage_col = candidate
+            break
+
+    task_type = config.model.task
+    if task_type in ("ncls", "n_binary"):
+        if n_stage_col is None:
+            raise ValueError(
+                f"任务为{task_type}但CSV中未找到N分期列。"
+                f"请确认CSV包含 'n' 列 (N分期标签)"
+            )
+        logger.info(f"  N分期标签列: '{n_stage_col}' (任务={task_type})")
+
     # 构建病人ID → 基因组特征映射
     genomic_map = {}
     survival_map = {}
+    n_stage_missing = 0
     for idx, row in df.iterrows():
         pid = str(row[patient_id_col]).strip()
         # 使用已填充NaN的feature_df
         genomic_map[pid] = feature_df.iloc[idx].values.astype(np.float32)
+
+        # 读取N分期标签 (用于分类任务)
+        g_label = 0
+        if task_type in ("ncls", "n_binary") and n_stage_col:
+            raw_n = str(row[n_stage_col]).strip()
+            if raw_n and raw_n.lower() != 'nan':
+                g_label = raw_n  # 保留原始N分期字符串，后续由数据集转换
+            else:
+                n_stage_missing += 1
+                g_label = "N0"  # 缺失默认N0
+
         survival_map[pid] = {
             "e": float(row[event_col]),
             "t": float(row[time_col]),
-            "g": 0,
+            "g": g_label,
         }
+    if n_stage_missing > 0:
+        logger.warning(f"  N分期标签缺失: {n_stage_missing}/{len(df)} 个样本")
     logger.info(f"  基因组映射: {len(genomic_map)} 个病人")
 
     # ---- 扫描patch目录 ----

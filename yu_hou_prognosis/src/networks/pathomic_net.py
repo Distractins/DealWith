@@ -107,12 +107,14 @@ class PathomicNet(nn.Module):
         )
 
         # ---- 4) 风险预测分类器 ----
-        label_dim = 1 if config.model.task == "surv" else config.model.omic.input_dim
+        label_dim = 1
         # 根据任务类型确定label_dim
         if config.model.task == "surv":
-            label_dim = 1
+            label_dim = 1  # 单值风险分数
         elif config.model.task == "ncls":
-            label_dim = 3  # N0/N1/N2
+            label_dim = 3  # N0/N1/N2 三分类
+        elif config.model.task == "n_binary":
+            label_dim = 2  # N0 vs N1/N2 二分类
         else:
             label_dim = 1
 

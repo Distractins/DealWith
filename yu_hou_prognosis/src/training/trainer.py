@@ -455,9 +455,9 @@ def _compute_total_loss(hazard_pred, survtime, censor, model, config,
     # Cox损失
     cox_loss = cox_criterion(hazard_pred, survtime, censor) * loss_cfg.lambda_cox
 
-    # 分类损失 (ncls任务)
+    # 分类损失 (ncls / n_binary 任务)
     task_loss = torch.tensor(0.0, device=hazard_pred.device)
-    if config.model.task == "ncls" and cls_logits is not None and cls_labels is not None:
+    if config.model.task in ("ncls", "n_binary") and cls_logits is not None and cls_labels is not None:
         cls_cfg = config.training.classification
         task_loss = classification_loss(
             logits=cls_logits,
@@ -521,6 +521,7 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
     all_hazards = []
     all_survtimes = []
     all_censors = []
+    all_labels = []  # 分类任务标签收集
     n_batches = 0
 
     optimizer.zero_grad(set_to_none=True)
@@ -538,17 +539,18 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
         censor = e.to(device, non_blocking=config.training.non_blocking)
         labels = g.to(device, non_blocking=config.training.non_blocking)
 
-        # ---- 检查batch的事件多样性 (防止全部event=0或全部event=1) ----
-        censor_np = e.numpy() if hasattr(e, 'numpy') else e.cpu().numpy()
-        unique_events = np.unique(censor_np)
-        if len(unique_events) < 2:
-            # 该batch所有样本事件一致，Cox损失无法计算有效梯度，跳过
-            if logger and batch_idx < 3:
-                logger.warning(
-                    f"  [批次跳过] batch {batch_idx}: 所有样本event={unique_events[0]:.0f}，"
-                    f"Cox部分似然无有效梯度，跳过此batch"
-                )
-            continue
+        # ---- 检查batch的事件多样性 (仅surv任务, 防止全部event=0或全部event=1) ----
+        if config.model.task == "surv":
+            censor_np = e.numpy() if hasattr(e, 'numpy') else e.cpu().numpy()
+            unique_events = np.unique(censor_np)
+            if len(unique_events) < 2:
+                # 该batch所有样本事件一致，Cox损失无法计算有效梯度，跳过
+                if logger and batch_idx < 3:
+                    logger.warning(
+                        f"  [批次跳过] batch {batch_idx}: 所有样本event={unique_events[0]:.0f}，"
+                        f"Cox部分似然无有效梯度，跳过此batch"
+                    )
+                continue
 
         # ---- 前向传播 (AMP autocast) ----
         amp_ctx = autocast("cuda", enabled=use_amp) if _AMP_NEW_API else autocast(enabled=use_amp)
@@ -564,9 +566,9 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
                     )
                 continue
 
-            # 分类任务也需要logits (ncls模式下hazard是[C]维分类logits)
+            # 分类任务也需要logits (ncls/n_binary模式下hazard是[C]维分类logits)
             cls_logits, cls_labels = None, None
-            if config.model.task == "ncls":
+            if config.model.task in ("ncls", "n_binary"):
                 cls_logits = hazard
                 cls_labels = labels
 
@@ -624,14 +626,14 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
         running_task += loss_dict["task"]
         running_reg += loss_dict["reg"]
 
-        # 收集预测值用于计算C-index
+        # 收集预测值用于计算指标
         with torch.no_grad():
             if config.model.task == "surv":
                 all_hazards.append(hazard.detach().cpu().numpy().reshape(-1))
             else:
-                # ncls任务: 使用logits最大值作为风险分数
-                all_hazards.append(hazard.detach().cpu().numpy().max(axis=1) if hazard.dim() > 1
-                                   else hazard.detach().cpu().numpy().reshape(-1))
+                # 分类任务: 保存完整的logits和标签用于计算accuracy
+                all_hazards.append(hazard.detach().cpu().numpy())
+                all_labels.append(labels.cpu().numpy().reshape(-1))
         all_survtimes.append(survtime.cpu().numpy().reshape(-1))
         all_censors.append(censor.cpu().numpy().reshape(-1))
 
@@ -648,20 +650,26 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
     # ---- 计算本轮平均指标 ----
     avg_loss = running_loss / max(n_batches, 1)
 
-    avg_cindex = 0.5  # 默认值
+    avg_cindex = 0.5  # 默认值 (surv任务)
     if len(all_hazards) > 0:
-        hazards_np = np.concatenate(all_hazards).reshape(-1)
-        survtimes_np = np.concatenate(all_survtimes).reshape(-1)
-        censors_np = np.concatenate(all_censors).reshape(-1)
-        try:
-            # 使用纯Python实现 (避免lifelines可能的安装问题)
-            avg_cindex = CIndex(hazards_np, survtimes_np, censors_np)
-        except Exception:
+        if config.model.task == "surv":
+            hazards_np = np.concatenate(all_hazards).reshape(-1)
+            survtimes_np = np.concatenate(all_survtimes).reshape(-1)
+            censors_np = np.concatenate(all_censors).reshape(-1)
             try:
-                avg_cindex = CIndex_lifeline(hazards_np, survtimes_np, censors_np,
-                                             nan_policy="omit")
+                avg_cindex = CIndex(hazards_np, survtimes_np, censors_np)
             except Exception:
-                avg_cindex = 0.5
+                try:
+                    avg_cindex = CIndex_lifeline(hazards_np, survtimes_np, censors_np,
+                                                 nan_policy="omit")
+                except Exception:
+                    avg_cindex = 0.5
+        elif config.model.task in ("ncls", "n_binary") and len(all_labels) > 0:
+            # 分类任务: 计算训练准确率
+            logits_np = np.concatenate(all_hazards, axis=0)
+            labels_np = np.concatenate(all_labels).reshape(-1).astype(int)
+            preds_np = np.argmax(logits_np, axis=1) if logits_np.ndim > 1 else logits_np
+            avg_cindex = float((preds_np == labels_np).mean())  # 用cindex字段存准确率
 
     return avg_loss, avg_cindex
 
@@ -1343,9 +1351,9 @@ def test(config, model: nn.Module, data: Dict, split: str,
     except Exception:
         hr = float("nan")
 
-    # ---- 分类指标 (ncls任务) ----
+    # ---- 分类指标 (ncls / n_binary 任务) ----
     cls_metrics = {}
-    if config.model.task == "ncls" and len(labels) > 0:
+    if config.model.task in ("ncls", "n_binary") and len(labels) > 0:
         try:
             cls_metrics = cls_metrics_fn(logits=torch.tensor(hazards),
                                           y_true=torch.tensor(labels.reshape(-1).astype(int)))
@@ -1355,23 +1363,26 @@ def test(config, model: nn.Module, data: Dict, split: str,
     # ---- 打印测试结果 ----
     logger.info("=" * 70)
     logger.info(f"  [{split.upper()} 评估结果]")
-    logger.info(f"    C-index:          {cindex:.4f}")
-    logger.info(f"    Log-rank p:       {pvalue:.4e}" if not np.isnan(pvalue) else "    Log-rank p:       nan")
-    if isinstance(td_auc, dict) and td_auc.get("mean_auc") is not None and not np.isnan(td_auc.get("mean_auc", float("nan"))):
-        logger.info(f"    tdAUC (均值):     {td_auc['mean_auc']:.4f}")
-    if not np.isnan(hr) if isinstance(hr, float) else True:
-        hr_val = hr if isinstance(hr, (float, int)) else float("nan")
-        if not np.isnan(hr_val):
-            logger.info(f"    Hazard Ratio:     {hr_val:.4f}")
-    if isinstance(surv_acc, dict) and surv_acc.get("accuracy") is not None:
-        logger.info(f"    Accuracy (Cox):   {surv_acc['accuracy']:.4f}")
-    if binary_metrics:
-        acc = binary_metrics.get("accuracy", "N/A")
-        f1 = binary_metrics.get("f1_score", "N/A")
-        logger.info(f"    二分类准确率:     {acc}")
-        logger.info(f"    二分类F1:         {f1}")
-    if cls_metrics:
-        logger.info(f"    分类指标:         {format_classification_metrics(cls_metrics)}")
+
+    if config.model.task == "surv":
+        logger.info(f"    C-index:          {cindex:.4f}")
+        logger.info(f"    Log-rank p:       {pvalue:.4e}" if not np.isnan(pvalue) else "    Log-rank p:       nan")
+        if isinstance(td_auc, dict) and td_auc.get("mean_auc") is not None and not np.isnan(td_auc.get("mean_auc", float("nan"))):
+            logger.info(f"    tdAUC (均值):     {td_auc['mean_auc']:.4f}")
+        if not np.isnan(hr) if isinstance(hr, float) else True:
+            hr_val = hr if isinstance(hr, (float, int)) else float("nan")
+            if not np.isnan(hr_val):
+                logger.info(f"    Hazard Ratio:     {hr_val:.4f}")
+        if isinstance(surv_acc, dict) and surv_acc.get("accuracy") is not None:
+            logger.info(f"    Accuracy (Cox):   {surv_acc['accuracy']:.4f}")
+        if binary_metrics:
+            acc = binary_metrics.get("accuracy", "N/A")
+            f1 = binary_metrics.get("f1_score", "N/A")
+            logger.info(f"    二分类准确率:     {acc}")
+            logger.info(f"    二分类F1:         {f1}")
+    elif config.model.task in ("ncls", "n_binary"):
+        if cls_metrics:
+            logger.info(f"    分类指标:         {format_classification_metrics(cls_metrics)}")
     logger.info("=" * 70)
 
     return (loss, cindex, pvalue, surv_acc, grad_acc, pred,

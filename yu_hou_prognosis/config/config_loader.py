@@ -68,6 +68,8 @@ class GenomicConfig:
     survtime_col: str = "OS.time"
     censor_col: str = "OS"
     patient_id_col: str = "PatientID"
+    max_rnaseq_features: int = 500
+    max_other_features: int = 50
 
 
 @dataclass
@@ -732,7 +734,7 @@ def _validate_config(config: ConfigBundle) -> None:
         )
 
     # 验证任务类型
-    valid_tasks = ["surv", "ncls"]
+    valid_tasks = ["surv", "ncls", "n_binary"]
     if config.model.task not in valid_tasks:
         raise ValueError(
             f"不支持的任务类型: '{config.model.task}'。"

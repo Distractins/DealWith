@@ -43,6 +43,10 @@ data:
     censor_col: "event"
     # 病人ID列名
     patient_id_col: "TCGA ID"
+    # RNA-seq特征最大保留数（方差过滤top-N，防维度爆炸）
+    max_rnaseq_features: 500
+    # 其他数值特征最大保留数
+    max_other_features: 50
     # 特征选择配置
     feature_selection:
       # 方法: none / variance_threshold / mutual_info / lasso / rf_importance / pca
@@ -102,7 +106,10 @@ model:
   mode: "pathomic"
   # 模型名称
   name: "YuHou"
-  # 任务类型: surv (生存预后) / ncls (N分期分类)
+  # 任务类型:
+  #   surv      — 生存预后预测 (需事件率≥25%，当前数据15.6%不推荐)
+  #   ncls      — N分期三分类 (N0/N1/N2，推荐)
+  #   n_binary  — N分期二分类 (N0 vs N1/N2，强烈推荐，临床最实用)
   task: "surv"
   # 模型随机种子
   seed: 2026
