@@ -217,6 +217,8 @@ class ModelConfig:
     mode: str = "pathomic"
     name: str = "YuHou"
     task: str = "surv"
+    # 标签模式 (task=ncls/n_binary 时生效): n_binary / n_3class
+    label_mode: str = "n_binary"
     seed: int = 2026
     path: PathConfig = field(default_factory=PathConfig)
     omic: OmicConfig = field(default_factory=OmicConfig)

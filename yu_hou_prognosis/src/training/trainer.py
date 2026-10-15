@@ -449,11 +449,12 @@ def _compute_total_loss(hazard_pred, survtime, censor, model, config,
         loss_dict: {"cox": float, "task": float, "reg": float}
     """
     loss_cfg = config.training.loss
-    # 使用推荐的CoxPartialLikelihoodLoss
-    cox_criterion = CoxPartialLikelihoodLoss()
 
-    # Cox损失
-    cox_loss = cox_criterion(hazard_pred, survtime, censor) * loss_cfg.lambda_cox
+    # Cox损失 (仅 surv 任务；分类任务 logits 形状为 [B,C]，不能套 Cox 部分似然)
+    cox_loss = torch.tensor(0.0, device=hazard_pred.device)
+    if config.model.task == "surv":
+        cox_criterion = CoxPartialLikelihoodLoss()
+        cox_loss = cox_criterion(hazard_pred, survtime, censor) * loss_cfg.lambda_cox
 
     # 分类损失 (ncls / n_binary 任务)
     task_loss = torch.tensor(0.0, device=hazard_pred.device)
@@ -539,18 +540,9 @@ def _train_one_epoch(model, train_loader, optimizer, scheduler, config,
         censor = e.to(device, non_blocking=config.training.non_blocking)
         labels = g.to(device, non_blocking=config.training.non_blocking)
 
-        # ---- 检查batch的事件多样性 (仅surv任务, 防止全部event=0或全部event=1) ----
-        if config.model.task == "surv":
-            censor_np = e.numpy() if hasattr(e, 'numpy') else e.cpu().numpy()
-            unique_events = np.unique(censor_np)
-            if len(unique_events) < 2:
-                # 该batch所有样本事件一致，Cox损失无法计算有效梯度，跳过
-                if logger and batch_idx < 3:
-                    logger.warning(
-                        f"  [批次跳过] batch {batch_idx}: 所有样本event={unique_events[0]:.0f}，"
-                        f"Cox部分似然无有效梯度，跳过此batch"
-                    )
-                continue
+        # 注意：不再按"batch内事件全相同"跳过样本——CoxPartialLikelihoodLoss 内部
+        # 已对该情况返回有梯度的 fallback loss（torch.relu(0.01 - hazard_std)）。
+        # 跳过 batch 会导致静默丢样本 + 打乱梯度累积节奏，故此处交给损失层处理。
 
         # ---- 前向传播 (AMP autocast) ----
         amp_ctx = autocast("cuda", enabled=use_amp) if _AMP_NEW_API else autocast(enabled=use_amp)
@@ -1081,37 +1073,53 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
             eval_result = _evaluate_split(model, val_loader, config, device)
 
             if len(eval_result["hazards"]) > 0:
-                hazards = eval_result["hazards"].reshape(-1)
-                survtimes = eval_result["survtimes"].reshape(-1)
-                censors = eval_result["censors"].reshape(-1)
+                if config.model.task == "surv":
+                    hazards = eval_result["hazards"].reshape(-1)
+                    survtimes = eval_result["survtimes"].reshape(-1)
+                    censors = eval_result["censors"].reshape(-1)
 
-                # 计算验证损失
-                cox_criterion = CoxPartialLikelihoodLoss()
-                hazard_t = torch.tensor(hazards, device=device)
-                survtime_t = torch.tensor(survtimes, device=device)
-                censor_t = torch.tensor(censors, device=device)
-                val_loss = cox_criterion(hazard_t, survtime_t, censor_t).item()
+                    # 计算验证损失
+                    cox_criterion = CoxPartialLikelihoodLoss()
+                    hazard_t = torch.tensor(hazards, device=device)
+                    survtime_t = torch.tensor(survtimes, device=device)
+                    censor_t = torch.tensor(censors, device=device)
+                    val_loss = cox_criterion(hazard_t, survtime_t, censor_t).item()
 
-                # 计算验证指标
-                try:
-                    val_cindex = CIndex(hazards, survtimes, censors)
-                except Exception:
-                    val_cindex = 0.5
+                    # 计算验证指标
+                    try:
+                        val_cindex = CIndex(hazards, survtimes, censors)
+                    except Exception:
+                        val_cindex = 0.5
 
-                try:
-                    val_pvalue = cox_log_rank(hazards, survtimes, censors)
-                except Exception:
-                    val_pvalue = float("nan")
+                    try:
+                        val_pvalue = cox_log_rank(hazards, survtimes, censors)
+                    except Exception:
+                        val_pvalue = float("nan")
 
-                try:
-                    td_auc_result = safe_time_dependent_auc(
-                        survtimes, censors, hazards,
-                        times=config.evaluation.eval_times,
-                        nan_policy="omit",
-                    )
-                    val_tdauc = td_auc_result.get("mean_auc", float("nan"))
-                except Exception:
-                    val_tdauc = float("nan")
+                    try:
+                        td_auc_result = safe_time_dependent_auc(
+                            survtimes, censors, hazards,
+                            times=config.evaluation.eval_times,
+                            nan_policy="omit",
+                        )
+                        val_tdauc = td_auc_result.get("mean_auc", float("nan"))
+                    except Exception:
+                        val_tdauc = float("nan")
+                else:
+                    # 分类任务: 验证损失用CE，验证指标用准确率（存入 val_cindex 字段）
+                    labels_np = eval_result["labels"].reshape(-1).astype(int)
+                    logits_t = torch.tensor(eval_result["hazards"], device=device)
+                    labels_t = torch.tensor(labels_np, device=device)
+                    val_loss = classification_loss(
+                        logits_t, labels_t,
+                        loss_name=config.training.classification.loss_type,
+                    ).item()
+                    preds_np = (np.argmax(eval_result["hazards"], axis=1)
+                                if eval_result["hazards"].ndim > 1
+                                else eval_result["hazards"])
+                    val_cindex = float((preds_np == labels_np).mean())
+                    val_pvalue = None
+                    val_tdauc = None
 
         # ---- 记录指标 ----
         metric_logger.update(
@@ -1276,80 +1284,93 @@ def test(config, model: nn.Module, data: Dict, split: str,
     survtimes_1d = survtimes.reshape(-1)
     censors_1d = censors.reshape(-1)
 
-    # ---- 计算损失 ----
-    try:
-        cox_criterion = CoxPartialLikelihoodLoss()
-        hazard_t = torch.tensor(hazards_1d, device=device)
-        survtime_t = torch.tensor(survtimes_1d, device=device)
-        censor_t = torch.tensor(censors_1d, device=device)
-        loss = cox_criterion(hazard_t, survtime_t, censor_t).item()
-    except Exception as e:
-        logger.warning(f"  [测试] 损失计算失败: {e}")
-        loss = 0.0
+    # ---- 初始化默认返回值 ----
+    loss = 0.0
+    cindex = 0.5
+    pvalue = float("nan")
+    surv_acc = {}
+    grad_acc = 0.0
+    pred = np.array([])
+    td_auc = {"mean_auc": float("nan"), "times": [], "auc_values": []}
+    binary_metrics = {}
+    group_summary = {}
+    hr = float("nan")
 
-    # ---- C-index ----
-    try:
-        cindex = CIndex(hazards_1d, survtimes_1d, censors_1d)
-    except Exception:
+    if config.model.task == "surv":
+        # ---- 计算损失 ----
         try:
-            cindex = CIndex_lifeline(hazards_1d, survtimes_1d, censors_1d,
-                                     nan_policy="omit")
+            cox_criterion = CoxPartialLikelihoodLoss()
+            hazard_t = torch.tensor(hazards_1d, device=device)
+            survtime_t = torch.tensor(survtimes_1d, device=device)
+            censor_t = torch.tensor(censors_1d, device=device)
+            loss = cox_criterion(hazard_t, survtime_t, censor_t).item()
+        except Exception as e:
+            logger.warning(f"  [测试] 损失计算失败: {e}")
+
+        # ---- C-index ----
+        try:
+            cindex = CIndex(hazards_1d, survtimes_1d, censors_1d)
         except Exception:
-            cindex = 0.5
+            try:
+                cindex = CIndex_lifeline(hazards_1d, survtimes_1d, censors_1d,
+                                         nan_policy="omit")
+            except Exception:
+                cindex = 0.5
 
-    # ---- Log-rank p值 ----
-    try:
-        pvalue = cox_log_rank(hazards_1d, survtimes_1d, censors_1d)
-    except Exception:
-        pvalue = float("nan")
+        # ---- Log-rank p值 ----
+        try:
+            pvalue = cox_log_rank(hazards_1d, survtimes_1d, censors_1d)
+        except Exception:
+            pvalue = float("nan")
 
-    # ---- survival accuracy (accuracy_cox) ----
-    try:
-        surv_acc = accuracy_cox(hazards_1d, survtimes_1d, censors_1d)
-    except Exception:
-        surv_acc = {}
+        # ---- survival accuracy (accuracy_cox) ----
+        try:
+            surv_acc = accuracy_cox(hazards_1d, survtimes_1d, censors_1d)
+        except Exception:
+            surv_acc = {}
 
-    grad_acc = 0.0  # 预留字段
+        # ---- 预测值 ----
+        pred = hazards_1d.copy()
 
-    # ---- 预测值 ----
-    pred = hazards_1d.copy()
+        # ---- 时间依赖AUC ----
+        try:
+            td_auc = safe_time_dependent_auc(
+                survtimes_1d, censors_1d, hazards_1d,
+                times=config.evaluation.eval_times,
+                n_times=50,
+                nan_policy="omit",
+            )
+        except Exception:
+            td_auc = {"mean_auc": float("nan"), "times": [], "auc_values": []}
 
-    # ---- 时间依赖AUC ----
-    try:
-        td_auc = safe_time_dependent_auc(
-            survtimes_1d, censors_1d, hazards_1d,
-            times=config.evaluation.eval_times,
-            n_times=50,
-            nan_policy="omit",
-        )
-    except Exception:
-        td_auc = {"mean_auc": float("nan"), "times": [], "auc_values": []}
+        # ---- 二分类指标 (基于中位数风险分组) ----
+        try:
+            binary_metrics = safe_binary_metrics_from_risk(
+                hazards_1d, survtimes_1d, censors_1d,
+                time_threshold=np.median(survtimes_1d) if len(survtimes_1d) > 0 else None,
+                return_dict=True,
+            )
+        except Exception:
+            binary_metrics = {}
 
-    # ---- 二分类指标 (基于中位数风险分组) ----
-    try:
-        binary_metrics = safe_binary_metrics_from_risk(
-            hazards_1d, survtimes_1d, censors_1d,
-            time_threshold=np.median(survtimes_1d) if len(survtimes_1d) > 0 else None,
-            return_dict=True,
-        )
-    except Exception:
-        binary_metrics = {}
+        # ---- 风险分组摘要 ----
+        try:
+            group_summary = safe_group_survival_summary(
+                hazards_1d, survtimes_1d, censors_1d, split_method="median"
+            )
+        except Exception:
+            group_summary = {}
 
-    # ---- 风险分组摘要 ----
-    try:
-        group_summary = safe_group_survival_summary(
-            hazards_1d, survtimes_1d, censors_1d, split_method="median"
-        )
-    except Exception:
-        group_summary = {}
-
-    # ---- 风险比 (HR) ----
-    try:
-        hr = safe_hazard_ratio_by_median_split(
-            hazards_1d, survtimes_1d, censors_1d, return_details=False
-        )
-    except Exception:
-        hr = float("nan")
+        # ---- 风险比 (HR) ----
+        try:
+            hr = safe_hazard_ratio_by_median_split(
+                hazards_1d, survtimes_1d, censors_1d, return_details=False
+            )
+        except Exception:
+            hr = float("nan")
+    else:
+        # ---- 分类任务: 预测值 = 预测类别标签 ----
+        pred = (np.argmax(hazards, axis=1) if hazards.ndim > 1 else hazards).copy()
 
     # ---- 分类指标 (ncls / n_binary 任务) ----
     cls_metrics = {}

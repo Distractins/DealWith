@@ -588,6 +588,10 @@ def _compile_fold_result(model, metric_logger, test_results, fold_id: int,
         "test_group_summary": group_summary,
         "test_surv_accuracy": surv_acc,
         "test_cls_metrics": cls_metrics,
+        "test_accuracy": cls_metrics.get("acc") if isinstance(cls_metrics, dict) else None,
+        "test_balanced_acc": cls_metrics.get("balanced_acc") if isinstance(cls_metrics, dict) else None,
+        "test_f1": cls_metrics.get("f1") if isinstance(cls_metrics, dict) else None,
+        "test_auc": cls_metrics.get("auc") if isinstance(cls_metrics, dict) else None,
         "test_predictions": pred.tolist() if isinstance(pred, np.ndarray) else [],
         "training_history": metric_logger.to_dict(),
         "model_state_dict": copy_state_dict_for_cpu(model.state_dict())
@@ -655,6 +659,12 @@ def _compute_cv_summary(fold_results: List[Dict[str, Any]],
     binary_f1s = [r["test_binary_metrics"].get("f1_score", float("nan"))
                   for r in fold_results if r.get("test_binary_metrics")]
 
+    # 分类任务指标 (ncls / n_binary)
+    cls_accs = [r["test_accuracy"] for r in fold_results if _is_valid_float(r.get("test_accuracy"))]
+    cls_balanced_accs = [r["test_balanced_acc"] for r in fold_results if _is_valid_float(r.get("test_balanced_acc"))]
+    cls_f1s = [r["test_f1"] for r in fold_results if _is_valid_float(r.get("test_f1"))]
+    cls_aucs = [r["test_auc"] for r in fold_results if _is_valid_float(r.get("test_auc"))]
+
     # 时间依赖AUC逐时间点统计 (跨fold)
     per_time_aucs = {}
     all_times = set()
@@ -710,6 +720,17 @@ def _compute_cv_summary(fold_results: List[Dict[str, Any]],
         "binary_f1_mean": _safe_mean_std(binary_f1s)[0],
         "binary_f1_std": _safe_mean_std(binary_f1s)[1],
 
+        # 分类任务指标 (ncls / n_binary)
+        "accuracy_mean": _safe_mean_std(cls_accs)[0],
+        "accuracy_std": _safe_mean_std(cls_accs)[1],
+        "accuracy_all": cls_accs,
+        "balanced_acc_mean": _safe_mean_std(cls_balanced_accs)[0],
+        "balanced_acc_std": _safe_mean_std(cls_balanced_accs)[1],
+        "cls_f1_mean": _safe_mean_std(cls_f1s)[0],
+        "cls_f1_std": _safe_mean_std(cls_f1s)[1],
+        "cls_auc_mean": _safe_mean_std(cls_aucs)[0],
+        "cls_auc_std": _safe_mean_std(cls_aucs)[1],
+
         # 配置引用
         "config_summary": {
             "task": config.model.task,
@@ -752,11 +773,32 @@ def _log_cv_summary(logger: logging.Logger, cv_summary: Dict[str, Any]) -> None:
     logger.info(f"  折ID: {cv_summary['fold_ids']}")
     logger.info("-" * 70)
 
-    # C-index
-    ci_mean = cv_summary["cindex_mean"]
-    ci_std = cv_summary["cindex_std"]
-    logger.info(f"  C-index:     {ci_mean:.4f} +/- {ci_std:.4f}")
-    logger.info(f"  各折C-index: {[f'{c:.4f}' for c in cv_summary.get('cindex_all', [])]}")
+    # 主指标（按任务类型）
+    cfg_task = cv_summary.get("config_summary", {}).get("task")
+    if cfg_task in ("ncls", "n_binary"):
+        acc_mean = cv_summary.get("accuracy_mean", float("nan"))
+        acc_std = cv_summary.get("accuracy_std", float("nan"))
+        if not np.isnan(acc_mean):
+            logger.info(f"  准确率:      {acc_mean:.4f} +/- {acc_std:.4f}")
+            logger.info(f"  各折准确率:  {[f'{c:.4f}' for c in cv_summary.get('accuracy_all', []) if _is_valid_float(c)]}")
+        bacc_mean = cv_summary.get("balanced_acc_mean", float("nan"))
+        bacc_std = cv_summary.get("balanced_acc_std", float("nan"))
+        if not np.isnan(bacc_mean):
+            logger.info(f"  平衡准确率:  {bacc_mean:.4f} +/- {bacc_std:.4f}")
+        f1_mean = cv_summary.get("cls_f1_mean", float("nan"))
+        f1_std = cv_summary.get("cls_f1_std", float("nan"))
+        if not np.isnan(f1_mean):
+            logger.info(f"  F1:          {f1_mean:.4f} +/- {f1_std:.4f}")
+        auc_mean = cv_summary.get("cls_auc_mean", float("nan"))
+        auc_std = cv_summary.get("cls_auc_std", float("nan"))
+        if not np.isnan(auc_mean):
+            logger.info(f"  AUC:         {auc_mean:.4f} +/- {auc_std:.4f}")
+    else:
+        # C-index
+        ci_mean = cv_summary["cindex_mean"]
+        ci_std = cv_summary["cindex_std"]
+        logger.info(f"  C-index:     {ci_mean:.4f} +/- {ci_std:.4f}")
+        logger.info(f"  各折C-index: {[f'{c:.4f}' for c in cv_summary.get('cindex_all', [])]}")
 
     # tdAUC
     tdauc_mean = cv_summary["tdauc_mean"]

@@ -110,7 +110,9 @@ model:
   #   surv      — 生存预后预测 (需事件率≥25%，当前数据15.6%不推荐)
   #   ncls      — N分期三分类 (N0/N1/N2，推荐)
   #   n_binary  — N分期二分类 (N0 vs N1/N2，强烈推荐，临床最实用)
-  task: "surv"
+  task: "n_binary"
+  # 标签模式 (task=ncls/n_binary 时生效): n_binary / n_3class
+  label_mode: "n_binary"
   # 模型随机种子
   seed: 2026
 
@@ -275,8 +277,8 @@ training:
   early_stopping:
     # 是否启用早停
     enabled: true
-    # 监控指标: cindex / loss
-    monitor: "cindex"
+    # 监控指标: cindex(surv任务) / accuracy(分类任务)
+    monitor: "accuracy"
     # 容忍轮数（连续N轮无改善则停止）
     patience: 5
     # 最小改善阈值

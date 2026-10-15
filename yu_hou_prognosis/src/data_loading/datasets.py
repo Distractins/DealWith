@@ -375,7 +375,10 @@ def build_dataloader(config, data: Dict, split: str, mode: str,
     kwargs = {
         "batch_size": config.training.batch_size,
         "shuffle": shuffle,
-        "drop_last": False,
+        # 训练集丢弃不足一个 batch 的尾批，避免出现单样本 batch：
+        # 单样本 batch 无法计算 Cox 部分似然，会触发无梯度损失导致 backward 崩溃
+        # (train_size % batch_size == 1 时，如 229 % 4 == 1)
+        "drop_last": (split == "train"),
         "num_workers": num_workers,
         "pin_memory": pin_memory,
     }

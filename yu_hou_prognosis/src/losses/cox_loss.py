@@ -88,9 +88,10 @@ def CoxLoss(survtime, censor, hazard_pred, device):
         (theta - (theta_max + torch.log(torch.sum(exp_theta_stable * R_mat, dim=1) + 1e-8))) * censor
     )
 
-    # 安全检查
+    # 安全检查：NaN/Inf 回退必须保留计算图，否则 backward 会报
+    # "element 0 of tensors does not require grad and does not have a grad_fn"
     if torch.isnan(loss_cox) or torch.isinf(loss_cox):
-        loss_cox = torch.tensor(0.0, device=current_device)
+        loss_cox = theta.mean() * 0.0
 
     return loss_cox
 
