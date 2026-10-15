@@ -84,25 +84,28 @@ class _ColoredFormatter(logging.Formatter):
         if self.colored:
             color = self.COLORS.get(record.levelname, "")
             reset = self.COLORS.get("RESET", "")
-            if color and sys.stdout.isatty():
+            try:
+                is_tty = sys.stdout.isatty()
+            except Exception:
+                is_tty = False
+            if color and is_tty:
                 formatted = f"{color}{formatted}{reset}"
 
         return formatted
 
 
-def _utf8_console_stream():
-    """返回UTF-8编码的控制台输出流，避免Windows重定向输出时中文乱码。"""
-    stream = sys.stdout
+def _ensure_utf8_stdout():
+    """重定向输出时把标准输出切成UTF-8，避免Windows下中文乱码。
+
+    仅在重定向（非tty）时reconfigure，避免影响交互式控制台；也绝不包装buffer——
+    否则新wrapper被GC时会关闭底层buffer，导致 sys.stdout.isatty() 抛
+    "I/O operation on closed file"。
+    """
     try:
-        if hasattr(stream, "buffer"):
-            import io
-            stream = io.TextIOWrapper(
-                stream.buffer, encoding="utf-8",
-                errors="replace", line_buffering=True,
-            )
+        if hasattr(sys.stdout, "reconfigure") and not sys.stdout.isatty():
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    return stream
 
 
 # ============================================================
@@ -153,9 +156,10 @@ def setup_logger(
 
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    # 控制台处理器（强制UTF-8，避免Windows重定向输出中文乱码）
+    # 控制台处理器（重定向时先切UTF-8，避免Windows输出中文乱码）
     if console:
-        console_handler = logging.StreamHandler(_utf8_console_stream())
+        _ensure_utf8_stdout()
+        console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logger.level)
         console_formatter = _ColoredFormatter(log_format, language=language, colored=True)
         console_formatter.default_time_format = date_format
