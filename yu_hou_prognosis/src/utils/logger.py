@@ -58,11 +58,12 @@ class _ColoredFormatter(logging.Formatter):
         "RESET": "\033[0m",       # 重置
     }
 
-    def __init__(self, fmt: str, language: str = "zh_CN"):
+    def __init__(self, fmt: str, language: str = "zh_CN", colored: bool = True):
         super().__init__(fmt)
         self.language = language
-        # 在Windows上启用ANSI
-        if sys.platform == "win32":
+        self.colored = colored
+        # 在Windows上启用ANSI（仅彩色控制台输出时需要）
+        if colored and sys.platform == "win32":
             try:
                 import ctypes
                 kernel32 = ctypes.windll.kernel32
@@ -71,23 +72,37 @@ class _ColoredFormatter(logging.Formatter):
                 pass
 
     def format(self, record: logging.LogRecord) -> str:
-        # 替换级别名为中文
+        # 替换级别名为中文（文件与控制台共用，保证 %(levelname_zh)s 一定存在）
         if self.language == "zh_CN":
-            zh_level = _LEVEL_ZH.get(record.levelname, record.levelname)
-            record.levelname_zh = zh_level
+            record.levelname_zh = _LEVEL_ZH.get(record.levelname, record.levelname)
         else:
             record.levelname_zh = record.levelname
 
-        # 添加颜色
-        color = self.COLORS.get(record.levelname, "")
-        reset = self.COLORS.get("RESET", "")
-
         formatted = super().format(record)
 
-        if color and sys.stdout.isatty():
-            formatted = f"{color}{formatted}{reset}"
+        # 仅在彩色控制台输出时添加ANSI颜色
+        if self.colored:
+            color = self.COLORS.get(record.levelname, "")
+            reset = self.COLORS.get("RESET", "")
+            if color and sys.stdout.isatty():
+                formatted = f"{color}{formatted}{reset}"
 
         return formatted
+
+
+def _utf8_console_stream():
+    """返回UTF-8编码的控制台输出流，避免Windows重定向输出时中文乱码。"""
+    stream = sys.stdout
+    try:
+        if hasattr(stream, "buffer"):
+            import io
+            stream = io.TextIOWrapper(
+                stream.buffer, encoding="utf-8",
+                errors="replace", line_buffering=True,
+            )
+    except Exception:
+        pass
+    return stream
 
 
 # ============================================================
@@ -138,11 +153,11 @@ def setup_logger(
 
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    # 控制台处理器
+    # 控制台处理器（强制UTF-8，避免Windows重定向输出中文乱码）
     if console:
-        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler = logging.StreamHandler(_utf8_console_stream())
         console_handler.setLevel(logger.level)
-        console_formatter = _ColoredFormatter(log_format, language=language)
+        console_formatter = _ColoredFormatter(log_format, language=language, colored=True)
         console_formatter.default_time_format = date_format
         console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
@@ -161,7 +176,9 @@ def setup_logger(
 
         file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)  # 文件记录所有级别
-        file_formatter = logging.Formatter(log_format, datefmt=date_format)
+        # 文件日志同样需要 %(levelname_zh)s，故复用 _ColoredFormatter（colored=False 不加色）
+        file_formatter = _ColoredFormatter(log_format, language=language, colored=False)
+        file_formatter.default_time_format = date_format
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
 

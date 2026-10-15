@@ -44,6 +44,7 @@ from src.utils.seed import set_seed
 from src.utils.logger import setup_logger, log_section
 from src.training.trainer import train, test, MetricLogger
 from src.data_loading.upstream_reader import UpstreamPatchReader
+from src.data_loading.datasets import normalize_n_stage, is_known_n_stage
 
 
 # ============================================================
@@ -275,6 +276,11 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
                 f"请确认CSV包含 'n' 列 (N分期标签)"
             )
         logger.info(f"  N分期标签列: '{n_stage_col}' (任务={task_type})")
+        try:
+            unique_n = sorted({normalize_n_stage(v) for v in df[n_stage_col].dropna().astype(str)})
+            logger.info(f"  数据中N分期取值: {unique_n}")
+        except Exception as e:
+            logger.warning(f"  无法统计N分期取值: {e}")
 
     # 构建病人ID → 基因组特征映射
     genomic_map = {}
@@ -289,11 +295,13 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
         g_label = 0
         if task_type in ("ncls", "n_binary") and n_stage_col:
             raw_n = str(row[n_stage_col]).strip()
-            if raw_n and raw_n.lower() != 'nan':
+            s_n = normalize_n_stage(raw_n)
+            if s_n and s_n != "NAN" and is_known_n_stage(s_n):
                 g_label = raw_n  # 保留原始N分期字符串，后续由数据集转换
             else:
+                # NX/未知/缺失: 无法确定淋巴结状态，标记为None并在折构建时剔除
                 n_stage_missing += 1
-                g_label = "N0"  # 缺失默认N0
+                g_label = None
 
         survival_map[pid] = {
             "e": float(row[event_col]),
@@ -362,13 +370,17 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
                 if len(patches) < config.upstream.num_patches_per_patient:
                     fold_missing += 1; continue
 
+                s = survival_map[pid]
+                # 分类任务: 跳过N分期未知(NX/缺失)的样本
+                if task_type in ("ncls", "n_binary") and s["g"] is None:
+                    fold_missing += 1; continue
+
                 # 检查基因组特征是否包含NaN/Inf
                 gvec = genomic_map[pid]
                 if np.any(np.isnan(gvec)) or np.any(np.isinf(gvec)):
                     fold_missing += 1; continue
 
                 x_omic_list.append(gvec)
-                s = survival_map[pid]
                 e_list.append(s["e"]); t_list.append(s["t"]); g_list.append(s["g"])
                 x_path_list.append(patches)
 

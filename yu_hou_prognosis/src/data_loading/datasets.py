@@ -74,51 +74,75 @@ def _to_long_tensor(x) -> torch.Tensor:
 # N分期标签映射（用于ncls任务）
 # ============================================================
 
-def _normalize_n_stage(raw_label) -> str:
-    """清洗N分期标签字符串"""
+# 淋巴结阴性（无转移）
+_NODE_NEGATIVE = {"N0", "N0(I+)", "N0(I-)"}
+# 淋巴结阳性（有转移）—— N1/N2/N3 及其亚型
+_NODE_POSITIVE_N1 = {"N1", "N1A", "N1B", "N1C", "N1MI"}
+_NODE_POSITIVE_N2 = {"N2", "N2A", "N2B"}
+_NODE_POSITIVE_N3 = {"N3", "N3A", "N3B"}
+
+
+def normalize_n_stage(raw_label) -> str:
+    """清洗N分期标签：去空白、转大写，返回标准token（如 N0 / N1A / N2B / NX / ''）。"""
     if raw_label is None:
         return ""
-    s = str(raw_label).strip().upper().replace(" ", "")
+    s = str(raw_label).strip().upper()
+    s = "".join(s.split())  # 去掉所有空白（含 "N0 (i+)" -> "N0(I+)"）
     return s
+
+
+def is_node_negative(s: str) -> bool:
+    """是否淋巴结阴性（N0 系列）"""
+    return s in _NODE_NEGATIVE
+
+
+def is_node_positive(s: str) -> bool:
+    """是否淋巴结阳性（N1/N2/N3 系列）"""
+    return (s in _NODE_POSITIVE_N1
+            or s in _NODE_POSITIVE_N2
+            or s in _NODE_POSITIVE_N3)
+
+
+def is_known_n_stage(s: str) -> bool:
+    """是否为可用的N分期（可用于分类任务训练；NX/空/未知返回False）"""
+    return is_node_negative(s) or is_node_positive(s)
 
 
 def _map_n_stage_to_3class(raw_label) -> int:
     """
     N分期三分类映射:
-        N0 -> 0
-        N1/N1a/N1b/N1c -> 1
-        N2/N2a/N2b -> 2
+        N0/N0(i+) -> 0
+        N1/N1a/N1b/N1c/N1mi -> 1
+        N2/N2a/N2b/N3 -> 2
     """
-    s = _normalize_n_stage(raw_label)
-    mapping = {
-        "N0": 0,
-        "N1": 1, "N1A": 1, "N1B": 1, "N1C": 1,
-        "N2": 2, "N2A": 2, "N2B": 2,
-    }
-    if s not in mapping:
-        raise ValueError(
-            f"不支持的N分期标签: raw_label={raw_label}, normalized={s}。"
-            f"期望: {sorted(mapping.keys())}"
-        )
-    return mapping[s]
+    s = normalize_n_stage(raw_label)
+    if is_node_negative(s):
+        return 0
+    if s in _NODE_POSITIVE_N1:
+        return 1
+    if s in _NODE_POSITIVE_N2 or s in _NODE_POSITIVE_N3:
+        return 2
+    raise ValueError(
+        f"不支持的N分期标签: raw_label={raw_label!r}, normalized={s!r}。"
+        f"NX/未知值应在数据加载阶段剔除"
+    )
 
 
 def _map_n_stage_to_binary(raw_label) -> int:
     """
     N分期二分类映射 (淋巴结转移预测):
-        N0 -> 0 (无淋巴结转移)
-        N1/N1a/N1b/N1c/N2/N2a/N2b -> 1 (有淋巴结转移)
+        N0/N0(i+) -> 0 (无淋巴结转移)
+        N1/N1a/N1b/N1c/N1mi/N2/N2a/N2b/N3 -> 1 (有淋巴结转移)
     """
-    s = _normalize_n_stage(raw_label)
-    if s == "N0":
+    s = normalize_n_stage(raw_label)
+    if is_node_negative(s):
         return 0
-    elif s in ("N1", "N1A", "N1B", "N1C", "N2", "N2A", "N2B"):
+    if is_node_positive(s):
         return 1
-    else:
-        raise ValueError(
-            f"不支持的N分期标签: raw_label={raw_label}, normalized={s}。"
-            f"期望N0/N1/N1a/N1b/N1c/N2/N2a/N2b"
-        )
+    raise ValueError(
+        f"不支持的N分期标签: raw_label={raw_label!r}, normalized={s!r}。"
+        f"NX/未知值应在数据加载阶段剔除"
+    )
 
 
 def _convert_labels_by_task(task: str, label_mode: str, labels: List) -> List:
