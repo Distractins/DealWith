@@ -81,13 +81,25 @@ _NODE_POSITIVE_N1 = {"N1", "N1A", "N1B", "N1C", "N1MI"}
 _NODE_POSITIVE_N2 = {"N2", "N2A", "N2B"}
 _NODE_POSITIVE_N3 = {"N3", "N3A", "N3B"}
 
+# 数字编码的N分期（部分数据用 0/1/2/3 表示 N0/N1/N2/N3）
+_NUMERIC_N_MAP = {
+    "0": "N0", "0.0": "N0",
+    "1": "N1", "1.0": "N1",
+    "2": "N2", "2.0": "N2",
+    "3": "N3", "3.0": "N3",
+}
+
 
 def normalize_n_stage(raw_label) -> str:
-    """清洗N分期标签：去空白、转大写，返回标准token（如 N0 / N1A / N2B / NX / ''）。"""
+    """清洗N分期标签：去空白、转大写，并统一数字编码（0/1/2/3 -> N0/N1/N2/N3）。
+
+    返回标准token，如 N0 / N1A / N2B / NX / ''。
+    """
     if raw_label is None:
         return ""
     s = str(raw_label).strip().upper()
     s = "".join(s.split())  # 去掉所有空白（含 "N0 (i+)" -> "N0(I+)"）
+    s = _NUMERIC_N_MAP.get(s, s)  # 数字编码 -> 标准N分期
     return s
 
 
