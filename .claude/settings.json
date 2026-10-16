@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -I -c ' *)",
+      "Bash(where python *)",
+      "Bash(py -0p)",
+      "Bash(where conda *)",
+      "Bash(conda env *)",
+      "Read(//d/xcjhhh/**)"
+    ]
+  }
+}

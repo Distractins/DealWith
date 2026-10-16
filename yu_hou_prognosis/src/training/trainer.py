@@ -1406,6 +1406,10 @@ def test(config, model: nn.Module, data: Dict, split: str,
             logger.info(f"    分类指标:         {format_classification_metrics(cls_metrics)}")
     logger.info("=" * 70)
 
+    # 非生存任务不存在C-index，置为NaN，避免被误读为0.5
+    if config.model.task != "surv":
+        cindex = float("nan")
+
     return (loss, cindex, pvalue, surv_acc, grad_acc, pred,
             td_auc, binary_metrics, group_summary, hr, cls_metrics)
 

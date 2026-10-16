@@ -1045,8 +1045,17 @@ def run_cross_validation(config) -> Dict[str, Any]:
                 fold_results.append(fold_result)
 
                 (_, cindex, pvalue, _, _, _, td_auc, _, _, hr, _) = test_results
-                logger.info(f"  [{fold_name}] 测试C-index: {cindex:.4f} | "
-                            f"训练最佳C-index: {metric_logger.best_cindex:.4f}")
+                if config.model.task == "surv":
+                    logger.info(f"  [{fold_name}] 测试C-index: {cindex:.4f} | "
+                                f"训练最佳C-index: {metric_logger.best_cindex:.4f}")
+                else:
+                    cls = test_results[-1]
+                    acc = cls.get("acc") if isinstance(cls, dict) else None
+                    if acc is not None:
+                        logger.info(f"  [{fold_name}] 测试准确率: {acc:.4f} | "
+                                    f"训练最佳准确率: {metric_logger.best_cindex:.4f}")
+                    else:
+                        logger.info(f"  [{fold_name}] 测试完成 (分类任务)")
             else:
                 logger.warning(f"  [{fold_name}] 无测试集，仅记录训练指标")
                 # 创建最小fold_result

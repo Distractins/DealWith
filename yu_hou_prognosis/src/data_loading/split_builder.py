@@ -163,8 +163,8 @@ def build_ncls_splits(
             "test": {"patient_ids": patient_ids[test_idx].tolist(), "indices": test_idx.tolist()},
             "stats": {
                 "train_n": len(train_idx), "test_n": len(test_idx),
-                "train_dist": {int(k): int(v) for k, v in zip(*np.unique(labels[train_idx], return_counts=True))},
-                "test_dist": {int(k): int(v) for k, v in zip(*np.unique(labels[test_idx], return_counts=True))},
+                "train_dist": {str(k): int(v) for k, v in zip(*np.unique(labels[train_idx], return_counts=True))},
+                "test_dist": {str(k): int(v) for k, v in zip(*np.unique(labels[test_idx], return_counts=True))},
             },
         }
 
