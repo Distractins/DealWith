@@ -6,7 +6,9 @@
       "Bash(py -0p)",
       "Bash(where conda *)",
       "Bash(conda env *)",
-      "Read(//d/xcjhhh/**)"
+      "Read(//d/xcjhhh/**)",
+      "Bash(cd \"D:/xcjhhh/DealWith\" 2>/dev/null || cd /d/xcjhhh/DealWith 2>/dev/null; echo \"=== 1. patch 目录 ===\"; ls -la wsi_patch_selection_benchmark/outputs/ 2>/dev/null || echo \"\\(wsi_patch_selection_benchmark/outputs 不存在\\)\"; echo; echo \"=== 2. 全盘找 TCGA patch PNG ===\"; find /d/xcjhhh -iname \"*.png\" 2>/dev/null | grep -iE \"tcga|dx1\" | head -20; echo \"\\(以上为匹配的 patch\\)\"; echo; echo \"=== 3. 全盘找 resnet .pth ===\"; find /d/xcjhhh -iname \"resnet*.pth\" 2>/dev/null | head; echo; echo \"=== 4. 全盘找 .svs ===\"; find /d/xcjhhh -iname \"*.svs\" 2>/dev/null | head; echo \"\\(以上为 .svs\\)\"; echo; echo \"=== 5. weights 目录 ===\"; ls -la yu_hou_prognosis/weights/ 2>/dev/null)",
+      "Bash(\"D:/CondaEnvs/YuHou/python.exe\" -I)"
     ]
   }
 }

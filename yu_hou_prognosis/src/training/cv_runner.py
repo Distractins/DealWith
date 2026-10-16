@@ -482,7 +482,9 @@ def _auto_build_full_splits(id_splits: Dict, config, logger) -> Dict[str, Any]:
     output_path = config.resolve_path(config.data.split_file)
     if output_path.exists():
         bak = output_path.with_suffix(".pkl.bak")
-        output_path.rename(bak)
+        # Windows 下 Path.rename 不会覆盖已存在的目标(FileExistsError/WinError 183)，
+        # 改用 os.replace 原子覆盖，避免残留 .pkl.bak 导致保存失败。
+        os.replace(output_path, bak)
     with open(output_path, "wb") as f:
         pickle.dump(output_folds, f, protocol=pickle.HIGHEST_PROTOCOL)
     logger.info(f"  完整数据pkl已保存: {output_path}")
