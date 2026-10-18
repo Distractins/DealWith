@@ -1,63 +1,54 @@
 # -*- coding: utf-8 -*-
-"""生成5折CV拆分文件，训练前运行一次即可。
+"""生成按病人ID的5折交叉验证拆分文件 (训练前运行一次)。
 
-根据任务类型选择分层策略:
-  - surv     : 按事件(死亡)×生存时间分层
-  - ncls     : 按N分期三分类(N0/N1/N2)分层
-  - n_binary : 按淋巴结转移二分类(N0 vs N1/N2/N3)分层
+Histomolecular任务:
+  - classification: 按目标基因高/低表达标签分层 (保证每折类别均衡)
+  - regression    : 按表达量分箱分层
+
+同一病人的6张WSI切片始终在同一折 (以TCGA ID为最小拆分单元)。
 """
 
 import pandas as pd
 
-from src.data_loading.split_builder import (
-    build_survival_splits,
-    build_ncls_splits,
-    save_splits,
-)
-from src.data_loading.datasets import _map_n_stage_to_binary, _map_n_stage_to_3class
+from src.data_loading.split_builder import build_gene_binary_splits, build_gene_regression_splits, save_splits
+from src.data_loading.gene_labels import resolve_gene_column, binarize_expression
 from config.config_loader import load_config
 
 config = load_config()
 
-# 读取基因组数据
 csv_path = config.resolve_path(config.data.genomic_csv)
 print(f"数据文件: {csv_path}")
 df = pd.read_csv(csv_path)
 print(f"样本数: {len(df)}")
 
-task = str(config.model.task).lower()
+patient_id_col = config.data.genomic.patient_id_col
+suffix = config.data.genomic.rnaseq_suffix
+target_gene = config.model.target_gene
+task_type = str(config.model.task_type).lower()
 
-if task in ("ncls", "n_binary"):
-    # N分期分类任务: 按类别分层，保证每折 N0/N+ 比例一致
-    n_col = "n"
-    if n_col not in df.columns:
-        raise ValueError(f"CSV缺少N分期列 '{n_col}'。可用列: {list(df.columns)[:20]}...")
+gene_col = resolve_gene_column(df, target_gene, suffix)
+if gene_col is None:
+    raise ValueError(f"未找到目标基因 '{target_gene}' 的表达列。请检查 CSV 或 data.genomic.target_genes。")
+print(f"目标基因表达列: {gene_col}")
 
-    if task == "n_binary":
-        df["_strat_label"] = df[n_col].astype(str).apply(_map_n_stage_to_binary)
-    else:  # ncls 三分类
-        df["_strat_label"] = df[n_col].astype(str).apply(_map_n_stage_to_3class)
-
-    print(f"  分层标签分布: {df['_strat_label'].value_counts().to_dict()}")
-    splits = build_ncls_splits(
-        df,
-        n_folds=5,
+if task_type == "classification":
+    # 用全数据集阈值粗略分层 (正式折内训练集上会重算阈值避免泄露)
+    df["_gene_label"] = binarize_expression(df, gene_col, threshold_method=config.model.group_threshold)
+    splits = build_gene_binary_splits(
+        df, gene_label_col="_gene_label",
+        n_folds=config.cross_validation.n_folds,
         seed=config.model.seed,
-        label_col="_strat_label",
-        patient_id_col="TCGA ID",
+        patient_id_col=patient_id_col,
     )
 else:
-    # 生存分析任务: 按事件×生存时间分层
-    splits = build_survival_splits(
-        df,
-        n_folds=5,
+    splits = build_gene_regression_splits(
+        df, gene_col=gene_col,
+        n_folds=config.cross_validation.n_folds,
         seed=config.model.seed,
-        event_col="event",
-        time_col="Survival months",
-        patient_id_col="TCGA ID",
+        patient_id_col=patient_id_col,
     )
 
-# 保存
 out_path = config.resolve_path(config.data.split_file)
 out_path.parent.mkdir(parents=True, exist_ok=True)
 save_splits(splits, out_path)
+print(f"拆分完成: {out_path}")

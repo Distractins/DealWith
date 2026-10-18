@@ -1,359 +1,199 @@
 # ============================================================
-# YuHou多模态预后预测 - 默认配置文件
-# 所有路径均为相对于项目根目录的相对路径，也可使用绝对路径
+# DealWith Histomolecular - 默认配置文件
+# 下游任务: 用WSI patch图像预测肠分化/粘液相关RNA-seq基因表达
+# 所有路径均为相对于项目根目录(yu_hou_prognosis/)的相对路径，也可使用绝对路径
 # 命令行参数可覆盖此文件中的任何配置项
 # ============================================================
 
 # ---- 项目基本信息 ----
 project:
-  name: "YuHou_Multimodal_Prognosis"
-  version: "2.0.0"
-  description: "结直肠癌COAD多模态预后生存预测 - 病理图像+基因组数据融合"
+  name: "DealWith_Histomolecular"
+  version: "3.0.0"
+  description: "结直肠癌WSI病理图像预测肠分化/粘液相关基因表达(Histomolecular任务)"
 
-# ---- 上游WSI Patch数据 ----
+# ---- 上游WSI Patch数据 (完全复用上游wsi_patch_selection_benchmark输出, 不改上游代码) ----
 upstream:
-  # 是否启用上游数据自动读取
   enabled: true
-  # 上游wsi_patch_selection_benchmark项目输出的patch根目录（相对于本项目根目录）
+  # 上游项目输出的patch根目录
   patch_root: "../wsi_patch_selection_benchmark/outputs/patches"
-  # 使用哪个算法的patch（grid/stratified/sentinel/random/kmeans/yottixel/splice/sdm/largest_tissue）
+  # 使用哪个算法的patch (grid/stratified/sentinel/random/kmeans/yottixel/splice/sdm/largest_tissue)
   algorithm_name: "grid"
-  # patch文件名模式: {slide_base}为slide ID, {idx}为patch序号
   file_pattern: "{slide_base}_{idx}.png"
-  # 每个病人使用的patch数量
+  # 每个病人使用的patch数量 (同一个病人6张WSI切片, 训练时patient-level聚合)
   num_patches_per_patient: 6
-  # patch图像的像素尺寸（应与上游输出一致）
   patch_size: 1024
 
 # ---- 数据路径 ----
 data:
-  # 数据集根目录
   root: "data"
-  # 基因组临床数据CSV文件路径
+  # 表格文件: TCGA ID + 临床信息 + 多个目标基因rnaseq表达值
   genomic_csv: "data/COAD_all_dataset.csv"
-  # 预生成的5折交叉验证拆分文件
+  # 预生成的按病人ID划分的5折拆分文件
   split_file: "data/splits/coad_allst_patient5fold.pkl"
-  # 基因组特征相关配置
   genomic:
-    # 原始基因组特征维度（COAD_all_dataset.csv中的基因特征列数）
-    input_dim: 356
-    # 存活时间列名
-    survtime_col: "Survival months"
-    # 删失标记列名（1=事件发生, 0=删失）
-    censor_col: "event"
     # 病人ID列名
     patient_id_col: "TCGA ID"
-    # RNA-seq特征最大保留数（方差过滤top-N，防维度爆炸）
-    max_rnaseq_features: 500
-    # 其他数值特征最大保留数
-    max_other_features: 50
-    # 特征选择配置
-    feature_selection:
-      # 方法: none / variance_threshold / mutual_info / lasso / rf_importance / pca
-      method: "variance_threshold"
-      # 方差阈值（method=variance_threshold时生效）
-      variance_threshold: 0.01
-      # 互信息保留特征数（method=mutual_info时生效）
-      n_features_mi: 200
-      # PCA保留方差比例（method=pca时生效）
-      pca_variance_ratio: 0.95
-      # 最终保留特征数（后续方法的目标维度）
-      n_features_final: 100
+    # 存活时间列名 (仅用于附属KM生存分析)
+    survtime_col: "Survival months"
+    # 删失标记列名 (1=事件发生, 0=删失; 仅用于附属KM生存分析)
+    censor_col: "event"
+    # 目标基因列表 (默认肠分化/粘液相关基因; 支持批量训练)
+    target_genes: ["REG4", "OLFM4", "MUC2", "DEFA5"]
+    # 可选协变量列 (临床/其他分子特征, 参与多模态融合; 留空则纯图像path-only)
+    # 注意: 不要放入目标基因自身的表达列, 否则会造成标签泄露
+    covariate_cols: []
+    # RNA-seq表达列后缀 (用于自动解析 "REG4" -> "REG4_rnaseq")
+    rnaseq_suffix: "_rnaseq"
 
-# ---- 图像预处理 ----
+# ---- 图像预处理 (保留, 数据集暂未强制接入; 可通过preprocessing.py单独使用) ----
 image_preprocessing:
-  # 是否启用图像预处理流水线
-  enabled: true
-  # 去噪配置
-  denoise:
-    # 方法: none / gaussian / median / bilateral
-    method: "gaussian"
-    # 高斯核大小（奇数）
-    kernel_size: 3
-    # 高斯核sigma（0表示自动计算）
-    sigma: 0
-  # 对比度增强配置
-  contrast:
-    # 方法: none / clahe / histogram_equalization
-    method: "clahe"
-    # CLAHE剪切限制
-    clip_limit: 2.0
-    # CLAHE网格大小
-    tile_grid_size: [8, 8]
-  # 颜色归一化配置
-  color_normalization:
-    # 方法: none / reinhard / macenko
-    method: "reinhard"
-    # Reinhard归一化的目标均值与标准差（LAB色彩空间）
-    target_mean: [0.5, 0.5, 0.5]
-    target_std: [0.5, 0.5, 0.5]
-  # 模糊图像过滤配置
-  blur_filter:
-    # 是否启用模糊过滤
-    enabled: true
-    # 检测方法: laplacian_variance / sobel_gradient / fft_energy
-    method: "laplacian_variance"
-    # Laplacian方差阈值（低于此值判定为模糊）
-    threshold: 100.0
-    # 模糊patch处理策略: mark_only / replace_with_mean / drop_patient
-    strategy: "mark_only"
-    # 病人最大允许的模糊patch比例（超过比例则标记整个病人为低质量）
-    max_blur_ratio_per_patient: 0.5
+  enabled: false
+  denoise: { method: "gaussian", kernel_size: 3, sigma: 0 }
+  contrast: { method: "clahe", clip_limit: 2.0, tile_grid_size: [8, 8] }
+  color_normalization: { method: "reinhard", target_mean: [0.5, 0.5, 0.5], target_std: [0.5, 0.5, 0.5] }
+  blur_filter: { enabled: false, method: "laplacian_variance", threshold: 100.0, strategy: "mark_only", max_blur_ratio_per_patient: 0.5 }
 
 # ---- 模型 ----
 model:
-  # 运行模式: path / omic / pathomic
-  mode: "pathomic"
-  # 模型名称
-  name: "YuHou"
-  # 任务类型:
-  #   surv      — 生存预后预测 (需事件率≥25%，当前数据15.6%不推荐)
-  #   ncls      — N分期三分类 (N0/N1/N2，推荐)
-  #   n_binary  — N分期二分类 (N0 vs N1/N2，强烈推荐，临床最实用)
-  task: "n_binary"
-  # 标签模式 (task=ncls/n_binary 时生效): n_binary / n_3class
-  label_mode: "n_binary"
-  # 模型随机种子
+  # 运行模式: path / omic / pathomic (path=纯图像预测基因, pathomic=图像+协变量融合)
+  mode: "path"
+  name: "Histomolecular"
+  # 任务类型: classification(二分类高/低表达) / regression(连续表达量回归, 可选)
+  task_type: "classification"
+  # 指定目标基因 (命令行 --target_gene 可覆盖; 需在 data.genomic.target_genes 中或为合法rnaseq列)
+  target_gene: "REG4"
+  # 二分类分组阈值: median(中位数, 默认) / mean / quantile / 数值(自定义阈值)
+  group_threshold: "median"
+  # 分类时的标签模式: binary(高表达=1 / 低表达=0)
+  label_mode: "binary"
   seed: 2026
 
   # ---- 病理图像分支 (PathNet) ----
   path:
-    # 骨干网络
     backbone: "resnet50"
-    # 预训练权重路径
     pretrained: "weights/resnet50-0676ba61.pth"
-    # 输出特征维度
     dim: 32
-    # 是否冻结骨干网络
     freeze_backbone: true
-    # 是否冻结BatchNorm
     freeze_bn: true
-    # 输入图像尺寸
     input_size: 1024
 
-  # ---- 基因组分支 (MaxNet) ----
+  # ---- 协变量分支 (OmicNet) ----
+  # 当 mode=pathomic 时, 输入维度由 data.genomic.covariate_cols 自动推断;
+  # 当 covariate_cols 为空时 mode 自动回退为 path。
   omic:
-    # 基因组特征输入维度（应与data.genomic.input_dim一致）
-    input_dim: 356
-    # 输出特征维度
+    input_dim: 0
     dim: 32
-    # 隐藏层维度列表
     hidden_dims: [64, 48, 32]
-    # 预训练权重路径（通常为空）
     pretrained: ""
 
-  # ---- 多模态融合 ----
+  # ---- 多模态融合 (保留9种策略; path-only时自动旁路) ----
   fusion:
-    # 融合策略类型:
-    #   pofusion - BilinearFusion (门控双线性融合)
-    #   lmf - Low-rank Multimodal Fusion (低秩多模态融合)
-    #   concat - ConcatFusion (简单拼接+MLP)
-    #   gmu - GMUFusion (门控多模态单元)
-    #   film - FiLMFusion (特征线性调制)
-    #   caugf - VectorCAUGF (三流自适应加权融合, 核心创新)
-    #   attention_weighted - AttentionWeightedFusion (注意力加权融合)
-    #   cross_attention - CrossAttentionFusion (交叉注意力融合)
-    #   tensor_concat - TensorConcatFusion (多层级特征图拼接融合)
     type: "caugf"
-    # 融合隐藏层维度
     hidden_dim: 64
-    # 融合输出维度
     output_dim: 64
-    # Dropout比率 (提高以对抗过拟合)
     dropout: 0.35
-
-    # ---- CAUGF专用参数 ----
     caugf:
-      # 最小流权重（防止某一路被完全抑制）
       min_stream_weight: 0.12
-      # 是否使用关系流
       use_relation: true
-      # 关系类型: product, difference, cosine, concat (可多选)
       relation_types: ["product", "difference", "cosine"]
-      # 输出层MLP层数
       num_post_layers: 2
-      # 是否使用LayerNorm（替代部分Dropout）
       use_layer_norm: true
-      # 流权重温度系数初始值（可学习）
       temperature_init: 1.0
-
-    # ---- 交叉注意力专用参数 ----
-    cross_attention:
-      # 注意力头数
-      num_heads: 4
-      # Transformer层数
-      num_layers: 2
-      # 前馈网络扩展比例
-      ff_expansion: 4
-
-    # ---- 注意力加权专用参数 ----
-    attention_weighted:
-      # 注意力头数
-      num_heads: 4
-      # 是否使用残差连接
-      use_residual: true
-
-    # ---- LMF专用参数 ----
-    lmf:
-      # 低秩分解秩
-      rank: 4
-
-    # ---- 双线性融合专用参数 ----
-    pofusion:
-      skip: 1
-      use_bilinear: 1
-      gate1: 1
-      gate2: 1
+    cross_attention: { num_heads: 4, num_layers: 2, ff_expansion: 4 }
+    attention_weighted: { num_heads: 4, use_residual: true }
+    lmf: { rank: 4 }
+    pofusion: { skip: 1, use_bilinear: 1, gate1: 1, gate2: 1 }
 
 # ---- 训练配置 ----
 training:
-  # 硬件设备: cuda / cpu / auto
   device: "auto"
-  # GPU卡号（单卡4080 Super使用0）
   gpu_id: 0
-  # 限制显存占用比例（0表示不限制）
   gpu_memory_fraction: 0.0
-  # 批次大小（1024x1024图像建议从2-4开始，4080 Super 16GB显存）
   batch_size: 4
-  # 梯度累积步数（等效增大batch_size = batch_size * accumulation_steps）
   gradient_accumulation_steps: 2
-  # DataLoader工作进程数 (Windows必须为0，否则触发shm.dll崩溃)
   num_workers: 0
-  # 是否锁页内存 (Windows下建议关闭，避免CUDA IPC共享内存问题)
   pin_memory: false
-  # 是否使用non_blocking传输 (Windows下建议关闭)
   non_blocking: false
-  # 数据预取因子 (num_workers=0时无效)
   prefetch_factor: 2
 
-  # ---- 优化器 ----
   optimizer:
-    # 类型: adam / adamw / adagrad / adabound
-    type: "adam"
-    # 学习率
+    type: "adamw"
     lr: 0.0001
-    # 权重衰减 (增大以抑制过拟合)
     weight_decay: 0.001
-    # Adam betas
     betas: [0.9, 0.999]
-    # AdaBound最终学习率
     final_lr: 0.1
 
-  # ---- 学习率调度器 ----
   scheduler:
-    # 类型: linear / exp / step / plateau / cosine
     type: "cosine"
-    # 固定学习率训练轮数
     n_epochs: 8
-    # 学习率衰减轮数
     n_epochs_decay: 4
-    # 总训练轮数 = n_epochs + n_epochs_decay
-    # 热身轮数
     warmup_epochs: 2
-    # 最小学习率
     min_lr: 1.0e-6
-    # 学习率衰减迭代数（step调度器使用）
     lr_decay_iters: 10
 
-  # ---- 混合精度训练 (AMP) ----
   amp:
-    # 是否启用自动混合精度 (暂时关闭避免FP16导致梯度图丢失)
     enabled: false
-    # 精度类型: float16 / bfloat16
     dtype: "float16"
 
-  # ---- 损失函数权重 ----
+  # ---- 损失配置 ----
   loss:
-    # Cox损失权重
-    lambda_cox: 1.0
-    # 分类/回归任务损失权重
+    # 任务损失类型: ce(分类CrossEntropy) / bce / focal(分类) / mse(回归)
+    task_loss: "ce"
+    # 分类任务损失权重
     lambda_task: 1.0
     # 正则化损失权重
     lambda_reg: 0.0003
     # 正则化类型: none / path / mm / all / omic
     reg_type: "path"
 
-  # ---- 早停策略 ----
-  early_stopping:
-    # 是否启用早停
-    enabled: true
-    # 监控指标: cindex(surv任务) / accuracy(分类任务)
-    monitor: "accuracy"
-    # 容忍轮数（连续N轮无改善则停止）
-    patience: 5
-    # 最小改善阈值
-    min_delta: 0.001
-
-  # ---- 分类任务损失（task=ncls时生效） ----
+  # ---- 分类任务损失细节 ----
   classification:
-    # 损失类型: ce / bce / focal
-    loss_type: "ce"
-    # 是否启用类别权重
+    loss_type: "ce"          # ce / bce / focal
     use_class_weights: true
-    # Label smoothing（仅CE有效）
     label_smoothing: 0.0
-    # Focal Loss参数
     focal_alpha: 0.25
     focal_gamma: 2.0
 
-  # ---- 训练策略 ----
-  # 梯度裁剪阈值
+  # ---- 早停 ----
+  early_stopping:
+    enabled: true
+    # 监控指标: auc / accuracy / f1 / loss (分类); loss / pearson / spearman (回归)
+    monitor: "auc"
+    patience: 5
+    min_delta: 0.001
+
   gradient_clip_norm: 1.0
-  # 是否启用微调模式（第5轮解冻单模态分支）
   finetune: false
-  # 激活函数类型: Tanh / ReLU / Sigmoid / LSM / none
   act_type: "none"
-  # 参数初始化方式: normal / xavier / kaiming / orthogonal / max / none
   init_type: "none"
   init_gain: 0.02
 
-  # ---- 断点续训 ----
   checkpoint:
-    # 是否每个epoch保存断点
     save_every: 1
-    # 是否从断点恢复
     resume: true
-    # 保留最近N个断点（0表示保留全部）
     keep_last_n: 3
 
-  # ---- GPU监控 ----
   gpu_monitor:
-    # 是否启用GPU显存监控
     enabled: true
-    # 是否启用OOM保护（自动降batch重试）
     oom_protection: true
-    # 显存使用告警阈值（比例，0.0-1.0）
     memory_warning_threshold: 0.85
-    # 监控日志间隔（每N个batch记录一次）
     log_interval: 10
 
-# ---- 交叉验证 ----
+# ---- 交叉验证 (按病人ID划分, 同一病人6张切片不跨train/val/test) ----
 cross_validation:
-  # 折数
   n_folds: 5
-  # 折编号列表
   fold_ids: [1, 2, 3, 4, 5]
-  # 是否打乱数据（split_builder使用）
   shuffle: true
+  # 从训练集切出验证集的比例 (0表示不切val, 仅train/test)
+  val_ratio: 0.2
 
 # ---- 评估配置 ----
 evaluation:
-  # 生存分析评估时间点（月），用于time-dependent AUC
-  eval_times: [12, 24, 36]
-  # Bootstrap次数（用于置信区间估计）
   n_bootstrap: 100
-  # 分类指标平均方式: binary / macro / micro
-  average: "macro"
-  # 是否输出每折详细指标
+  average: "binary"
   per_fold_details: true
-  # 评估指标列表
+  # 主指标: ACC / AUC / F1 (分类), MSE / Pearson (回归)
   metrics:
-    survival:
-      - "c_index"
-      - "time_dependent_auc"
-      - "log_rank_pvalue"
-      - "hazard_ratio"
-      - "brier_score"
     classification:
       - "accuracy"
       - "balanced_accuracy"
@@ -363,62 +203,50 @@ evaluation:
       - "auc"
       - "average_precision"
       - "mcc"
+    regression:
+      - "mse"
+      - "mae"
+      - "rmse"
+      - "pearson"
+      - "spearman"
+  # 附属生存分析: 用预测的分子表型分组画KM + logrank检验 (仅补充验证)
+  auxiliary_survival:
+    enabled: true
+    # 分组方法: median(预测分数中位) / binary(分类概率>0.5)
+    split_method: "median"
 
 # ---- 可视化配置 ----
 visualization:
-  # 是否启用可视化输出
   enabled: true
-  # 图片DPI
   dpi: 300
-  # 输出格式
-  formats: ["png", "pdf"]
-  # KM曲线配置
+  formats: ["png"]
+  roc_curve: { title: "ROC曲线" }
+  confusion_matrix: { title: "混淆矩阵" }
   km_curve:
     xlabel: "时间 (月)"
     ylabel: "总体生存率 (OS)"
-    title: "Kaplan-Meier生存曲线"
+    title: "Kaplan-Meier生存曲线(按预测分子表型分组)"
     show_ci: true
-    show_risk_table: true
+    show_risk_table: false
     color_high_risk: "#e74c3c"
     color_low_risk: "#2ecc71"
-  # ROC曲线配置
-  roc_curve:
-    title: "时间依赖ROC曲线"
-  # 校准曲线配置
-  calibration_curve:
-    title: "校准曲线"
-    n_bins: 10
-  # 风险直方图配置
-  risk_histogram:
-    title: "预测风险分布"
-    n_bins: 30
+  calibration_curve: { title: "校准曲线", n_bins: 10 }
 
 # ---- 日志配置 ----
 logging:
-  # 日志级别: DEBUG / INFO / WARNING / ERROR
   level: "INFO"
-  # 日志语言: zh_CN / en_US
   language: "zh_CN"
-  # 日志格式
   format: "%(asctime)s [%(levelname)s] %(message)s"
-  # 日志文件名
   file: "logs/train.log"
-  # 是否同时输出到控制台
   console: true
-  # 是否记录模型结构
   log_model_arch: true
-  # 是否记录GPU信息
   log_gpu_info: true
 
 # ---- 实验管理 ----
 experiment:
-  # 实验名称（决定输出子目录名）
   name: "default"
-  # 实验输出根目录
   output_root: "experiments"
-  # 实验描述
-  description: "默认实验配置"
-  # 子目录（自动创建）
+  description: "Histomolecular基因表达预测实验"
   subdirs:
     ckpt: "ckpt"
     logs: "logs"
@@ -426,7 +254,13 @@ experiment:
     preds: "preds"
     results: "results"
     figures: "figures"
-  # 是否保存预测结果
   save_predictions: true
-  # 是否保存每个epoch的预测
   save_epoch_predictions: false
+
+# ---- 消融实验框架 ----
+# 用于对比不同上游patch采样算法对分子表型预测的影响 (上游9种采样算法不动)
+ablation:
+  # 要对比的上游采样算法列表 (每次运行用同一套下游配置, 只切换algorithm_name)
+  algorithms: ["grid", "random", "kmeans", "yottixel", "stratified", "sentinel", "splice", "sdm", "largest_tissue"]
+  # 要训练的基因列表 (为空则用 data.genomic.target_genes)
+  target_genes: []

@@ -127,6 +127,33 @@ def classification_loss(logits, labels, loss_name="ce", class_weights=None,
 
 
 # ============================================================
+# 回归损失 (连续表达量)
+# ============================================================
+
+def regression_loss(pred, target, loss_name="mse"):
+    """
+    连续表达量回归损失。
+
+    参数:
+        pred: [B, 1] 或 [B] 模型预测
+        target: [B] 真实表达量
+        loss_name: "mse" (均方误差) / "mae" (平均绝对误差) / "huber"
+
+    返回:
+        loss: 标量
+    """
+    pred = pred.reshape(-1).float()
+    target = target.reshape(-1).float()
+
+    name = str(loss_name).lower()
+    if name == "mae":
+        return torch.nn.functional.l1_loss(pred, target)
+    if name == "huber":
+        return torch.nn.functional.smooth_l1_loss(pred, target)
+    return torch.nn.functional.mse_loss(pred, target)
+
+
+# ============================================================
 # FocalLoss: 针对类别不平衡的Focal Loss
 # ============================================================
 

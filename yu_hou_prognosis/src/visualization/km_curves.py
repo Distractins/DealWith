@@ -153,6 +153,102 @@ def plot_km_curve(
     return fig, p_value
 
 
+def plot_km_by_group(
+    group: np.ndarray,
+    events: np.ndarray,
+    times: np.ndarray,
+    save_path: Optional[str] = None,
+    title: str = "Kaplan-Meier生存曲线(按预测分子表型分组)",
+    xlabel: str = "时间 (月)",
+    ylabel: str = "总体生存率 (OS)",
+    group_names: Optional[dict] = None,
+    colors: Optional[dict] = None,
+    show_ci: bool = True,
+    dpi: int = 300,
+):
+    """
+    按预测分子表型分组绘制KM生存曲线 (附属生存分析)。
+
+    参数:
+        group: [N] 分组标签 (0/1 或任意整数)
+        events: [N] 事件标记 (1=事件, 0=删失)
+        times: [N] 生存时间
+        save_path: 保存路径
+        title/xlabel/ylabel: 标题与坐标轴
+        group_names: {group_value: 名称}
+        colors: {group_value: 颜色}
+        show_ci: 是否显示置信区间
+        dpi: 分辨率
+
+    返回:
+        (fig, p_value)
+    """
+    group = np.asarray(group).reshape(-1)
+    events = np.asarray(events).reshape(-1).astype(bool)
+    times = np.asarray(times).reshape(-1).astype(float)
+
+    valid = np.isfinite(times) & np.isfinite(group.astype(float))
+    group = group[valid]
+    events = events[valid]
+    times = times[valid]
+
+    if group_names is None:
+        group_names = {0: "低表达组", 1: "高表达组"}
+    if colors is None:
+        colors = {0: "#2ecc71", 1: "#e74c3c"}
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    uniq = sorted(np.unique(group))
+
+    p_value = None
+    if len(uniq) >= 2:
+        g0 = group == uniq[0]
+        g1 = group == uniq[1]
+        try:
+            lr = logrank_test(
+                times[g0], times[g1],
+                event_observed_A=events[g0],
+                event_observed_B=events[g1],
+            )
+            p_value = float(lr.p_value)
+        except Exception:
+            p_value = None
+
+    for gv in uniq:
+        mask = group == gv
+        if mask.sum() == 0:
+            continue
+        kmf = KaplanMeierFitter()
+        label = group_names.get(gv, f"组{gv}")
+        kmf.fit(times[mask], events[mask], label=f"{label} (n={mask.sum()})")
+        kmf.plot_survival_function(
+            ax=ax, color=colors.get(gv, None), linewidth=2.5,
+            show_censors=True, ci_show=show_ci,
+        )
+
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+
+    if p_value is not None:
+        p_text = f"Log-rank p = {p_value:.4f}"
+        if p_value < 0.05:
+            p_text += " *"
+        if p_value < 0.01:
+            p_text += "*"
+        ax.text(0.05, 0.05, p_text, transform=ax.transAxes,
+                fontsize=11, verticalalignment="bottom",
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+    return fig, p_value
+
+
 # ============================================================
 # 模块自测
 # ============================================================
@@ -168,4 +264,9 @@ if __name__ == "__main__":
     fig, p = plot_km_curve(risk, events, times)
     if p:
         print(f"  Log-rank p = {p:.4f}")
+
+    group = (risk > np.median(risk)).astype(int)
+    fig2, p2 = plot_km_by_group(group, events, times)
+    if p2:
+        print(f"  分组KM Log-rank p = {p2:.4f}")
     print("测试通过!")

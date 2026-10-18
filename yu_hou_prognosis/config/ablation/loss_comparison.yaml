@@ -1,38 +1,21 @@
 # ============================================================
 # 损失函数对比消融实验配置
-# 对比不同损失函数对生存预测的影响
+# 分类任务: ce / bce / focal
+# 回归任务: mse / mae / huber
+# 使用方式: python main.py --mode train --target_gene REG4 --config 本文件
+#   并临时修改 training.loss.task_loss 或 training.classification.loss_type
 # ============================================================
 
 experiment:
   name: "ablation_loss_comparison"
   description: "损失函数对比消融实验"
 
-ablations:
-  - name: "cox_baseline"
-    loss_type: "cox"
-    lambda_cox: 1.0
-    description: "标准Cox部分似然损失"
-
-  - name: "cox_l2"
-    loss_type: "cox_l2"
-    lambda_cox: 1.0
-    lambda_l2: 0.01
-    description: "Cox损失 + L2正则化"
-
-  - name: "cox_weighted"
-    loss_type: "cox_weighted"
-    lambda_cox: 1.0
-    description: "Cox损失 + 事件加权"
-
-# 固定参数
-training:
-  batch_size: 4
-  optimizer:
-    lr: 0.0001
-  scheduler:
-    n_epochs: 8
-    n_epochs_decay: 4
-
 model:
-  fusion:
-    type: "caugf"
+  task_type: "classification"
+  target_gene: "REG4"
+
+training:
+  loss:
+    task_loss: "ce"
+  classification:
+    loss_type: "ce"

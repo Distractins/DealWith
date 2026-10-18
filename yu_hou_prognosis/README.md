@@ -1,113 +1,21 @@
-# YuHou - 结直肠癌(COAD)多模态预后预测
+# YuHou → Histomolecular 基因表达预测
 
-> **YuHou (预后)**：基于WSI病理图像与基因组数据的多模态深度学习框架，用于结直肠癌患者的生存预后预测。
-
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
-[![CUDA](https://img.shields.io/badge/CUDA-11.8+-green.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![GPU](https://img.shields.io/badge/GPU-RTX%204080%20Super%2016GB-orange.svg)](https://www.nvidia.com/)
+> **下游任务 (重构后)**：用上游输出的 WSI patch 图像，预测肠分化/粘液相关 RNA-seq 基因表达（如 REG4、OLFM4、MUC2、DEFA5）。
 
 ---
 
-## 📋 目录
+## 任务说明
 
-- [项目概览](#项目概览)
-- [上下游调用关系](#上下游调用关系)
-- [核心创新](#核心创新)
-- [项目结构](#项目结构)
-- [环境部署](#环境部署)
-- [数据集说明](#数据集说明)
-- [快速开始](#快速开始)
-- [实验方案](#实验方案)
-- [模型选型依据](#模型选型依据)
-- [评估指标](#评估指标)
-- [GPU运行优化](#gpu运行优化)
-- [常见问题](#常见问题)
+原「WSI+基因组多模态 Cox 生存预后预测」已替换为 **Histomolecular 任务**：
 
----
+- **主任务**：输入 WSI patch 图像 → 预测目标基因表达。
+  - 默认 **二分类**：用表达量中位数分组，高表达 / 低表达（`CrossEntropyLoss`）。
+  - 可选 **回归**：预测连续表达量（`MSE`）。
+- **标签**：表格文件（CSV）包含 `TCGA ID`、临床信息、多个目标基因 `*_rnaseq` 表达值；程序自动匹配 TCGA ID、自动做中位数划分。
+- **多模态用途改变**：图像 patch 特征用于预测基因标签；基因组/临床信息作为**可选协变量**参与融合（`mode=pathomic`）。
+- **附属分析（非主目标）**：用模型预测出的分子表型分组做生存 KM 曲线 + logrank 检验，仅作补充验证，**不再**以 C-index 作为主评价指标。
 
-## 项目概览
-
-本项目基于TCGA-COAD（结肠腺癌）数据集，利用**全切片病理图像(WSI)切块**与**基因组临床数据**构建多模态深度学习模型，预测结直肠癌患者的**总体生存期(Overall Survival)**。
-
-### 研究背景
-
-结直肠癌是全球第三大常见恶性肿瘤，准确的预后预测对于制定个体化治疗方案至关重要。本项目结合：
-
-1. **病理形态学信息**：从H&E染色的WSI图像中提取肿瘤微环境特征
-2. **基因组分子信息**：RNA-seq基因表达、基因突变等分子特征
-
-通过多模态融合技术，实现比单一模态更准确的生存预后预测。
-
----
-
-## 上下游调用关系
-
-```
-┌─────────────────────────────────┐
-│  wsi_patch_selection_benchmark  │  ← 上游项目
-│  (WSI切块 + Patch筛选算法对比)  │
-│                                  │
-│  输入: TCGA-COAD .svs WSI文件    │
-│  输出: outputs/patches/{算法}/   │
-│         TCGA-XX-XXXX_1.png       │
-│         TCGA-XX-XXXX_2.png       │
-│         ...                      │
-└────────────┬────────────────────┘
-             │  patch图像文件夹
-             ▼
-┌─────────────────────────────────┐
-│     yu_hou_prognosis (本项目)    │  ← 下游项目
-│  (多模态预后生存预测)            │
-│                                  │
-│  输入1: 上游patch图像             │
-│  输入2: COAD_all_dataset.csv     │
-│  输出: 生存风险预测分数           │
-│         C-index/AUC评估报告       │
-│         KM生存曲线                │
-└─────────────────────────────────┘
-```
-
-**固定执行顺序**:
-1. 先运行 `wsi_patch_selection_benchmark` 生成病理切块图像
-2. 再运行本项目 `yu_hou_prognosis` 进行预后预测
-
-配置文件 `config/default_config.yaml` 中的 `upstream.patch_root` 指向上游输出目录，支持自定义算法名称。
-
----
-
-## 核心创新
-
-### 1. VectorCAUGF 三流自适应融合模块
-
-本项目核心融合模块 **VectorCAUGF** 采用三流并行架构：
-
-- **病理特征流 (Path Stream)**：从ResNet50提取的WSI patch特征
-- **基因组特征流 (Omic Stream)**：从MLP编码器提取的基因特征
-- **关系流 (Relation Stream)**：显式建模两个模态之间的乘积、差异、余弦相似度关系
-
-通过**流级softmax自适应加权** + **sigmoid门控校准** + **残差保底连接**，在表达性与稳定性之间取得平衡。
-
-### 2. 9种多模态融合策略横向对比
-
-| 融合策略 | 类型 | 说明 |
-|---------|------|------|
-| `caugf` | VectorCAUGF | 三流自适应加权融合 ★核心创新 |
-| `pofusion` | BilinearFusion | 门控双线性外积融合 |
-| `lmf` | LMF | 低秩多模态融合（参数高效） |
-| `concat` | ConcatFusion | 简单拼接+MLP（基线） |
-| `gmu` | GMUFusion | 门控多模态单元 |
-| `film` | FiLMFusion | 特征线性调制（基因组调节病理） |
-| `attention_weighted` | AttentionWeightedFusion | 注意力加权融合 ★新增 |
-| `cross_attention` | CrossAttentionFusion | 交叉注意力多模态融合 ★新增 |
-| `tensor_concat` | TensorConcatFusion | 多层级特征图拼接融合 ★新增 |
-
-### 3. 低质量WSI图像鲁棒处理
-
-- **自适应去噪**：高斯/中值/双边滤波
-- **对比度增强**：CLAHE局部自适应直方图均衡化
-- **颜色归一化**：Reinhard/Macenko染色归一化
-- **模糊图像检测**：Laplacian方差法，标记低质量patch
+上游 `wsi_patch_selection_benchmark` **完全不动**：所有切块逻辑、9 种 patch 采样算法、输出路径保持不变，其输出 patch 仍作为下游输入。
 
 ---
 
@@ -115,302 +23,166 @@
 
 ```
 yu_hou_prognosis/
-├── README.md                          # 本文件
-├── requirements.txt                   # Python依赖
-├── main.py                            # 统一入口(eda/train/test/ablation)
+├── README.md
+├── main.py                          # 统一入口 (eda/train/test/ablation)
+├── make_split.py                    # 按病人ID生成5折拆分 (训练前运行一次)
+├── build_data_splits.py             # (可选) 委托 cv_runner 构建完整数据
 ├── config/
-│   ├── default_config.yaml            # 全局默认配置
-│   ├── config_loader.py               # 配置加载器
-│   └── ablation/                      # 消融实验配置
+│   ├── default_config.yaml          # 全局配置
+│   ├── config_loader.py             # 配置加载器
+│   └── ablation/                    # 消融实验配置
+│       ├── patch_sampling_comparison.yaml   # 上游9种采样算法对比
+│       ├── fusion_comparison.yaml
+│       ├── loss_comparison.yaml
+│       ├── preprocessing.yaml
+│       └── feature_selection.yaml
 ├── data/
-│   └── TCGA_COAD/
-│       └── COAD_all_dataset.csv       # 基因组临床数据
-├── weights/                           # 预训练权重
-│   ├── resnet50-0676ba61.pth          # ImageNet预训练ResNet50
-│   └── lmf_test_model.pth             # LMF测试模型
-├── src/
-│   ├── data_loading/                  # 数据加载层
-│   │   ├── datasets.py                # PyTorch Dataset定义
-│   │   ├── upstream_reader.py         # 上游WSI patch读取
-│   │   ├── preprocessing.py           # 图像去噪/增强/归一化
-│   │   └── split_builder.py           # 5折CV数据集拆分
-│   ├── eda/                           # 数据探索性分析
-│   │   ├── genomic_eda.py             # 基因组特征EDA
-│   │   ├── image_quality_eda.py       # 图像质量EDA
-│   │   └── task_justification.py      # 任务合理性与基线论证
-│   ├── feature_engineering/           # 特征工程
-│   │   ├── feature_selection.py       # 基因组特征筛选/降维
-│   │   └── image_quality_filter.py    # 模糊图像过滤
-│   ├── networks/                      # 模型结构层
-│   │   ├── resnet_backbone.py         # ResNet骨干(CBAM注意力)
-│   │   ├── path_net.py                # 病理图像编码器
-│   │   ├── omic_net.py                # 基因组特征编码器
-│   │   ├── pathomic_net.py            # 多模态主网络
-│   │   ├── caugf.py                   # VectorCAUGF融合(核心)
-│   │   ├── fusion_bilinear.py         # 门控双线性融合
-│   │   ├── fusion_lmf.py              # 低秩多模态融合
-│   │   ├── fusion_concat.py           # 拼接融合基线
-│   │   ├── fusion_gmu.py              # 门控多模态单元
-│   │   ├── fusion_film.py             # 特征线性调制
-│   │   ├── fusion_attention_weighted.py  # 注意力加权融合
-│   │   ├── fusion_cross_attention.py  # 交叉注意力融合
-│   │   ├── fusion_tensor_concat.py    # 多层级特征图拼接
-│   │   └── fusion_factory.py          # 融合策略工厂
-│   ├── losses/                        # 损失函数层
-│   │   ├── cox_loss.py                # Cox比例风险损失
-│   │   ├── classification_loss.py     # 分类损失(CE/BCE/Focal)
-│   │   └── regularization.py          # 正则化
-│   ├── training/                      # 训练验证推理层
-│   │   ├── trainer.py                 # 训练器(AMP/梯度累积)
-│   │   ├── tester.py                  # 测试/推理
-│   │   ├── cv_runner.py               # 交叉验证主控
-│   │   ├── checkpoint.py              # 断点续训管理
-│   │   ├── gpu_manager.py             # GPU显存监控/OOM保护
-│   │   ├── optimizer.py               # 优化器工厂
-│   │   └── scheduler.py               # 学习率调度器工厂
-│   ├── evaluation/                    # 指标评估层
-│   │   ├── survival_metrics.py        # C-index/tdAUC/logrank/HR
-│   │   ├── classification_metrics.py  # 分类指标
-│   │   ├── calibration.py             # 校准曲线+Brier Score
-│   │   └── metric_formatter.py        # 中文指标格式化
-│   ├── visualization/                 # 可视化层
-│   │   ├── km_curves.py               # KM生存曲线
-│   │   ├── risk_histograms.py         # 风险直方图
-│   │   ├── roc_curves.py              # 时间依赖ROC曲线
-│   │   ├── calibration_plots.py       # 校准曲线图
-│   │   └── boxplots.py                # 箱线图
-│   └── utils/                         # 工具层
-│       ├── logger.py                  # 中文日志
-│       ├── seed.py                    # 随机种子
-│       └── io_utils.py                # IO工具
-└── experiments/                       # 实验输出(运行时创建)
-    └── {exp_name}/
-        ├── ckpt/                      # 模型检查点
-        ├── logs/                      # 训练日志
-        ├── preds/                     # 预测结果
-        ├── results/                   # 评估结果
-        └── figures/                   # 可视化图表
+│   └── COAD_all_dataset.csv         # TCGA ID + 临床 + 目标基因rnaseq表达
+├── weights/                         # 预训练权重 (resnet50)
+└── src/
+    ├── data_loading/
+    │   ├── datasets.py              # 病人级Dataset (patch袋 + 基因标签)
+    │   ├── gene_labels.py           # ★ 基因表达列解析 + 中位数分组
+    │   ├── upstream_reader.py       # 上游patch读取 (不变)
+    │   ├── split_builder.py         # 按病人ID分层拆分 (防泄露)
+    │   └── preprocessing.py         # 图像预处理 (保留)
+    ├── eda/
+    │   └── gene_eda.py              # ★ 基因表达分布 + 高低表达组临床差异 + KM
+    ├── networks/                    # 网络结构 (保留ResNet/PathNet/OmicNet/9种融合)
+    │   └── pathomic_net.py          # ★ 主网络 (输出基因标签)
+    ├── losses/
+    │   ├── classification_loss.py   # CE/BCE/Focal + MSE回归
+    │   ├── cox_loss.py              # (保留, 未用于主任务)
+    │   └── regularization.py
+    ├── training/
+    │   ├── trainer.py               # ★ 训练/评估 (ACC/AUC/F1)
+    │   ├── cv_runner.py             # ★ 交叉验证主控 + 结果CSV
+    │   ├── checkpoint.py / gpu_manager.py / optimizer.py / scheduler.py
+    │   └── tester.py                # (保留, 已被 trainer.test 取代)
+    ├── evaluation/
+    │   ├── classification_metrics.py
+    │   ├── regression_metrics.py    # ★ MSE/MAE/RMSE/Pearson/Spearman
+    │   ├── survival_metrics.py      # (保留, 附属KM用)
+    │   ├── calibration.py / metric_formatter.py
+    ├── visualization/
+    │   ├── roc_curves.py            # ROC
+    │   ├── confusion_matrix.py      # ★ 混淆矩阵
+    │   ├── km_curves.py             # KM (含按分子表型分组)
+    │   └── ...
+    └── utils/                       # logger/seed/io
+└── experiments/                     # 运行时生成 (每基因独立目录)
 ```
 
 ---
 
 ## 环境部署
 
-### 硬件要求
-
-| 组件 | 最低要求 | 推荐配置 |
-|------|---------|---------|
-| GPU | NVIDIA GPU 8GB+ | RTX 4080 Super 16GB |
-| CPU | 8核 | 16核+ |
-| RAM | 32GB | 64GB+ |
-| 存储 | 50GB | 200GB+ SSD |
-
-### 软件环境
+与旧版一致（PyTorch 2.0+、CUDA 11.8/12.1、RTX 4080 Super 16GB 推荐）：
 
 ```bash
-# 1. 创建虚拟环境 (推荐Python 3.10)
-conda create -n yuhou python=3.10
-conda activate yuhou
-
-# 2. 安装PyTorch (CUDA 11.8版本)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# 3. 安装项目依赖
+conda create -n dealwith python=3.10
+conda activate dealwith
 cd yu_hou_prognosis
 pip install -r requirements.txt
-
-# 4. 验证GPU可用性
-python -c "import torch; print(f'CUDA可用: {torch.cuda.is_available()}'); print(f'GPU型号: {torch.cuda.get_device_name(0)}')"
-```
-
-### 4080 Super环境特别说明
-
-- CUDA版本建议 11.8 或 12.1+
-- 推荐PyTorch 2.0+ (支持`torch.compile()`加速)
-- 混合精度使用float16 (4080 Super不支持bfloat16硬件加速)
-- 驱动版本 >= 535.xx
-
----
-
-## 数据集说明
-
-### COAD_all_dataset.csv
-
-TCGA-COAD（结肠腺癌）患者数据集，包含约**350列**：
-
-| 列类型 | 说明 | 示例 |
-|--------|------|------|
-| 患者ID | TCGA样本编号 | TCGA-A6-2686 |
-| 生存时间 | OS.time (天) | 1123 |
-| 删失标记 | OS (1=死亡, 0=存活/失访) | 1 |
-| 临床特征 | 年龄、性别、TNM分期、Grade等 | T3, N0, M0 |
-| 基因突变 | BRCA1, TP53, KRAS等~300个基因 | 0/1 (野生型/突变型) |
-
-### WSI Patch图像
-
-来自上游 `wsi_patch_selection_benchmark` 项目输出：
-- 格式：PNG (RGB)
-- 尺寸：1024×1024像素
-- 每病人：6个代表性patch
-- 来源：TCGA-COAD DX1诊断切片
-
----
-
-## 快速开始
-
-### 1. 配置
-
-编辑 `config/default_config.yaml` 或创建自定义配置：
-
-```bash
-# 使用默认配置（自动检测路径）
-python main.py --mode train
-
-# 使用自定义配置
-python main.py --mode train --config config/default_config.yaml
-
-# 命令行覆盖参数
-python main.py --mode train --fusion_type cross_attention --batch_size 2 --exp_name exp_cross_attn
-```
-
-### 2. 数据探索性分析 (EDA)
-
-```bash
-# 运行完整EDA（基因组 + 图像质量 + 任务论证）
-python main.py --mode eda
-```
-
-### 3. 训练
-
-```bash
-# 默认CAUGF融合策略训练
-python main.py --mode train
-
-# 交叉注意力融合训练
-python main.py --mode train --fusion_type cross_attention --exp_name ca_experiment
-
-# 注意力加权融合训练
-python main.py --mode train --fusion_type attention_weighted --exp_name aw_experiment
-```
-
-### 4. 消融实验
-
-```bash
-# 融合策略对比实验（所有9种策略）
-python main.py --mode ablation --config config/ablation/fusion_comparison.yaml
-
-# 损失函数对比实验
-python main.py --mode ablation --config config/ablation/loss_comparison.yaml
-
-# 图像预处理消融实验
-python main.py --mode ablation --config config/ablation/preprocessing.yaml
-```
-
-### 5. 推理
-
-```bash
-# 单模型推理
-python main.py --mode test --checkpoint experiments/default/ckpt/best.pt
 ```
 
 ---
 
-## 实验方案
+## 数据准备
 
-### 主要实验
+1. 上游切块（不动）：先运行 `wsi_patch_selection_benchmark` 生成 `outputs/patches/{algorithm}/*.png`。
+2. 表格文件：`data/COAD_all_dataset.csv`，需包含：
+   - `TCGA ID` 列（病人 ID）
+   - 临床/生存列（可选，用于附属 KM，如 `event`、`Survival months`）
+   - 目标基因表达列（如 `REG4_rnaseq`、`OLFM4_rnaseq`、`MUC2_rnaseq`、`DEFA5_rnaseq`）
+3. 生成病人级拆分（同一病人 6 张切片不跨折）：
 
-| 实验编号 | 实验名称 | 目的 | 对比维度 |
-|---------|---------|------|---------|
-| Exp-1 | 融合策略对比 | 比较9种融合策略的预后预测性能 | C-index, tdAUC |
-| Exp-2 | 损失函数对比 | CoxLoss vs CoxPHLoss vs 组合损失 | 收敛速度, 预测精度 |
-| Exp-3 | 图像预处理消融 | 评估去噪/增强/归一化的影响 | 有/无预处理 |
-| Exp-4 | 特征选择消融 | 评估降维对过拟合的缓解效果 | 原始356维 vs 100维 |
-| Exp-5 | 单模态基线 | Path-only vs Omic-only | 多模态增益 |
-| Exp-6 | CAUGF优化验证 | 验证7项CAUGF优化的改进效果 | 每项改动独立对比 |
+```bash
+python make_split.py
+```
+
+---
+
+## 运行示例命令
+
+### 1. EDA（基因表达分布 + 高低表达组临床差异 + 附属 KM）
+
+```bash
+python main.py --mode eda --target_gene REG4
+```
+
+### 2. 训练（分类，默认高/低表达二分类）
+
+```bash
+# 单基因
+python main.py --mode train --target_gene REG4
+
+# 指定上游patch采样算法 (grid/random/kmeans/yottixel/stratified/sentinel/splice/sdm/largest_tissue)
+python main.py --mode train --target_gene REG4 --algorithm_name kmeans
+
+# 指定融合策略 (path-only时融合被旁路, 需配置协变量并 mode=pathomic)
+python main.py --mode train --target_gene REG4 --fusion_type caugf
+
+# 批量多基因 (每个基因独立实验目录 + 各自CSV)
+python main.py --mode train --target_genes REG4 OLFM4 MUC2 DEFA5
+```
+
+### 3. 训练（回归，可选）
+
+```bash
+python main.py --mode train --target_gene REG4 --task_type regression
+```
+
+### 4. 测试（加载 checkpoint 评估）
+
+```bash
+python main.py --mode test --target_gene REG4 \
+  --checkpoint experiments/default/ckpt/fold1_best_model.pth
+```
+
+### 5. 消融（上游 9 种 patch 采样算法对比）
+
+```bash
+python main.py --mode ablation --target_gene REG4
+# 或
+python main.py --mode ablation --config config/ablation/patch_sampling_comparison.yaml
+```
 
 ---
 
-## 模型选型依据
+## 关键配置项（`config/default_config.yaml`）
 
-### 为什么不用传统机器学习模型（LASSO/RF/XGBoost）？
-
-1. **多模态非线性融合**：病理图像与基因组数据具有本质不同的数据结构，深度学习可以端到端学习跨模态非线性交互
-2. **高维特征自动提取**：WSI patch的1024×1024像素需要CNN提取层次化视觉特征
-3. **生存分析专项优化**：Cox比例风险损失函数天然适合生存数据，传统ML模型难以直接优化生存排序
-4. **端到端训练**：深度学习可以同时优化特征提取和预测，避免分阶段误差累积
-
-### 为什么是生存分析而非普通分类/回归？
-
-1. **删失数据处理**：临床随访中大量患者未发生终点事件（删失），普通分类/回归无法处理
-2. **时间维度信息**：生存分析可以输出随时间变化的风险函数，临床意义更丰富
-3. **临床标准指标**：C-index、KM曲线是肿瘤预后领域的金标准
-4. **个体化预测**：生存分析可输出任意时间点的存活概率，而非简单的二分类判断
+| 配置 | 说明 |
+|------|------|
+| `model.task_type` | `classification`（二分类）/ `regression`（回归） |
+| `model.target_gene` | 指定目标基因，如 `REG4` |
+| `data.genomic.target_genes` | 目标基因列表（批量训练） |
+| `model.group_threshold` | 分组阈值：`median`（默认）/`mean`/`quantile`/数值 |
+| `model.mode` | `path`（纯图像，默认）/ `pathomic`（图像+协变量融合）/ `omic` |
+| `data.genomic.covariate_cols` | 可选协变量列（临床/其他分子特征；勿放目标基因自身） |
+| `upstream.algorithm_name` | 上游采样算法（消融实验切换此项） |
+| `training.early_stopping.monitor` | 早停监控指标：`auc`/`accuracy`/`f1`/`loss`（回归：`pearson`） |
 
 ---
+
+## 实验设计要点
+
+- **Patient-level 聚合**：每个患者 6 张 WSI 切片，训练时 PathNet 逐 patch 提取特征后**均值池化**为病人级表示；训练与评估均为 patient-level，不按 patch 评估。
+- **防数据泄露**：5 折拆分以 `TCGA ID` 为最小单元，同一病人的所有 patch 始终在同一折；二分类中位数阈值**基于训练集**计算后应用到 train/test。
+- **标签构建**：`data_loading/gene_labels.py` 自动解析 `REG4` → `REG4_rnaseq`，中位数划分高/低表达。
 
 ## 评估指标
 
-### 主要指标
+- **主指标（分类）**：ACC、AUC、F1（同时输出 balanced ACC、precision、recall、AP、MCC）。
+- **主指标（回归）**：MSE、MAE、RMSE、Pearson、Spearman。
+- **附属（非主目标）**：预测分子表型分组的 KM 曲线 + logrank p 值，仅作补充验证。
 
-| 指标 | 说明 | 范围 | 方向 |
-|------|------|------|------|
-| **C-index** | 一致性指数，衡量风险预测的排序能力 | [0, 1] | ↑越高越好 |
-| **tdAUC** | 时间依赖AUC，特定时间点的判别能力 | [0, 1] | ↑越高越好 |
-| **Log-rank p** | 高/低风险组生存差异显著性 | [0, 1] | ↓越低越好 |
-| **Hazard Ratio** | 风险比，高/低风险组的风险比例 | (0, ∞) | 远离1越好 |
-| **Brier Score** | 预测概率校准度 | [0, 1] | ↓越低越好 |
+## 输出
 
-### 可视化评估
+每个基因在 `experiments/{exp_name}/` 下输出：
 
-- **KM生存曲线**：高中低风险组的Kaplan-Meier生存曲线 + log-rank检验
-- **时间依赖ROC曲线**：不同时间点的ROC曲线
-- **校准曲线**：预测风险 vs 实际事件发生率
-- **风险直方图**：预测风险分数的分布
-
----
-
-## GPU运行优化
-
-### RTX 4080 Super (16GB) 优化策略
-
-| 参数 | 建议值 | 说明 |
-|------|--------|------|
-| `batch_size` | 2-4 | 1024×1024×6 patches每样本约1.5GB |
-| `gradient_accumulation_steps` | 2-4 | 等效增大batch_size到8-16 |
-| `amp.dtype` | float16 | 4080 Super推荐float16 |
-| `num_workers` | 4 | DataLoader进程数 |
-| `pin_memory` | true | 锁页内存加速CPU→GPU传输 |
-| `gradient_clip_norm` | 1.0 | 防止梯度爆炸 |
-
-### 显存监控
-
-项目内置GPU显存监控模块，自动：
-- 记录每10个batch的显存使用
-- 在85%显存使用时告警
-- 捕获CUDA OOM异常并尝试自动降batch重试
-
----
-
-## 常见问题
-
-### Q: 上游patch图像不存在怎么办？
-A: 请确保已运行 `wsi_patch_selection_benchmark` 项目，并检查 `config/default_config.yaml` 中 `upstream.patch_root` 路径正确。
-
-### Q: CUDA内存不足怎么办？
-A: 尝试以下方案：(1) 减小 `batch_size`；(2) 增大 `gradient_accumulation_steps`；(3) 减少 `num_patches_per_patient`。
-
-### Q: 如何使用自己的数据集？
-A: (1) 准备类似格式的CSV文件；(2) 修改 `data.genomic_csv` 路径；(3) 重新生成5折CV拆分文件。
-
-### Q: 断点续训如何工作？
-A: 训练中断后，使用相同配置重新运行即可自动从最近的断点恢复。断点保存在 `experiments/{exp_name}/resume/` 目录下。
-
----
-
-## 引用
-
-本项目参考了以下开源工作：
-- **Pathomic Fusion**: Chen et al., "Pathomic Fusion: An Integrated Framework for Fusing Histopathology and Genomic Features for Cancer Diagnosis and Prognosis", IEEE TMI, 2020
-- **LMF**: Liu et al., "Efficient Low-rank Multimodal Fusion with Modality-Specific Factors", ACL 2018
-- **GMU**: Arevalo et al., "Gated Multimodal Units for Information Fusion", ICLR 2017
-- **FiLM**: Perez et al., "FiLM: Visual Reasoning with a General Conditioning Layer", AAAI 2018
+- `results/{gene}_results.csv` — 每折 + 均值±标准差实验日志
+- `results/cv_results.pkl` — 完整 CV 结果
+- `ckpt/fold{id}_best_model.pth` — 模型权重
+- `figures/` — ROC、混淆矩阵、Loss 曲线、附属 KM 图
+- `logs/cv_train.log` — 训练日志

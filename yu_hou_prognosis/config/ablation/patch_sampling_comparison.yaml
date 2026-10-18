@@ -1,0 +1,17 @@
+# ============================================================
+# 消融实验配置: 上游9种patch采样算法对比
+# 对比不同采样算法对分子表型(基因表达)预测效果的影响
+# 运行: python main.py --mode ablation --config config/ablation/patch_sampling_comparison.yaml
+# ============================================================
+
+experiment:
+  name: "ablation_patch_sampling"
+
+model:
+  task_type: "classification"
+  target_gene: "REG4"
+
+# 要对比的上游采样算法 (上游9种采样算法本身不动, 只切换algorithm_name)
+ablation:
+  algorithms: ["grid", "random", "kmeans", "yottixel", "stratified", "sentinel", "splice", "sdm", "largest_tissue"]
+  target_genes: []   # 为空则使用 model.target_gene
