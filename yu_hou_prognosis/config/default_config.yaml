@@ -73,8 +73,8 @@ model:
     backbone: "resnet50"
     pretrained: "weights/resnet50-0676ba61.pth"
     dim: 32
-    freeze_backbone: true
-    freeze_bn: true
+    freeze_backbone: false
+    freeze_bn: false
     input_size: 1024
 
   # ---- 协变量分支 (OmicNet) ----
@@ -91,7 +91,7 @@ model:
     type: "caugf"
     hidden_dim: 64
     output_dim: 64
-    dropout: 0.35
+    dropout: 0.5
     caugf:
       min_stream_weight: 0.12
       use_relation: true
@@ -118,7 +118,7 @@ training:
 
   optimizer:
     type: "adamw"
-    lr: 0.0001
+    lr: 0.00002
     weight_decay: 0.001
     betas: [0.9, 0.999]
     final_lr: 0.1
@@ -182,7 +182,7 @@ training:
 # ---- 交叉验证 (按病人ID划分, 同一病人6张切片不跨train/val/test) ----
 cross_validation:
   n_folds: 5
-  fold_ids: [1, 2, 3, 4, 5]
+  fold_ids: [1]
   shuffle: true
   # 从训练集切出验证集的比例 (0表示不切val, 仅train/test)
   val_ratio: 0.2
