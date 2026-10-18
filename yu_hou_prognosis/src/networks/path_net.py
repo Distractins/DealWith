@@ -105,6 +105,7 @@ class PathNet2(nn.Module):
         pretrained_path=None,
         freeze_backbone=True,
         freeze_bn=True,
+        unfreeze_from="fc",
     ):
         super(PathNet2, self).__init__()
 
@@ -127,14 +128,9 @@ class PathNet2(nn.Module):
                 print(f"[PathNet2] 警告: 预训练权重不存在: {pretrained_path}")
             print("[PathNet2] 使用随机初始化")
 
-        # 冻结骨干网络
-        if freeze_backbone:
-            for name, param in self.net.named_parameters():
-                if not name.startswith("fc."):
-                    param.requires_grad = False
-            print("[PathNet2] ResNet骨干已冻结，仅fc层可训练")
-        else:
-            print("[PathNet2] ResNet骨干可训练")
+        # 冻结骨干网络 (支持部分微调)
+        # unfreeze_from: fc(仅fc) / layer4 / layer3 / layer2 / all(全可训练)
+        self._apply_freeze(unfreeze_from, freeze_backbone)
 
         # 冻结BatchNorm
         if freeze_bn:
@@ -178,6 +174,44 @@ class PathNet2(nn.Module):
 
         except Exception as e:
             print(f"[PathNet2] 加载预训练权重失败: {e}")
+
+    def _apply_freeze(self, unfreeze_from, freeze_backbone):
+        """
+        设置骨干网络各层的 requires_grad，支持部分微调。
+
+        参数:
+            unfreeze_from: fc / layer4 / layer3 / layer2 / all
+                - fc      : 仅fc层可训练 (等同旧 freeze_backbone=True)
+                - layer4  : layer4 + fc 可训练
+                - layer3  : layer3 + layer4 + fc 可训练
+                - all     : 全部可训练
+            freeze_backbone: 旧开关 (当 unfreeze_from 未显式给定时兜底)
+        """
+        if unfreeze_from in (None, "all"):
+            # 全可训练
+            for param in self.net.parameters():
+                param.requires_grad = True
+            print("[PathNet2] ResNet全部可训练")
+            return
+
+        order = ["conv1", "bn1", "layer1", "layer2", "layer3", "layer4"]
+        if unfreeze_from == "fc":
+            trainable = {"fc"}
+            desc = "仅fc层可训练"
+        else:
+            if unfreeze_from not in order:
+                raise ValueError(f"不支持的 unfreeze_from: '{unfreeze_from}'，可选 fc/layer4/layer3/layer2/all")
+            idx = order.index(unfreeze_from)
+            trainable = set(order[idx:]) | {"fc"}
+            desc = f"{unfreeze_from} 及之后层可训练"
+
+        for name, param in self.net.named_parameters():
+            prefix = name.split(".")[0]
+            if prefix in trainable or name.startswith("fc."):
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        print(f"[PathNet2] {desc}")
 
     @staticmethod
     def _set_bn_eval(module):
@@ -223,7 +257,8 @@ class PathNet2(nn.Module):
 # ============================================================
 
 def create_path_net(path_dim=32, act=None, label_dim=1,
-                    pretrained_path=None, freeze_backbone=True, freeze_bn=True):
+                    pretrained_path=None, freeze_backbone=True, freeze_bn=True,
+                    unfreeze_from="fc"):
     """
     创建PathNet2病理图像编码器的便捷函数。
 
@@ -232,8 +267,9 @@ def create_path_net(path_dim=32, act=None, label_dim=1,
         act: 激活函数
         label_dim: 输出预测维度
         pretrained_path: 预训练权重路径
-        freeze_backbone: 是否冻结骨干
+        freeze_backbone: 是否冻结骨干 (旧开关)
         freeze_bn: 是否冻结BN
+        unfreeze_from: 部分微调起点 fc/layer4/layer3/layer2/all
 
     返回:
         PathNet2实例
@@ -245,6 +281,7 @@ def create_path_net(path_dim=32, act=None, label_dim=1,
         pretrained_path=pretrained_path,
         freeze_backbone=freeze_backbone,
         freeze_bn=freeze_bn,
+        unfreeze_from=unfreeze_from,
     )
 
 

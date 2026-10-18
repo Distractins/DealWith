@@ -139,6 +139,8 @@ class PathConfig:
     freeze_backbone: bool = True
     freeze_bn: bool = True
     input_size: int = 1024
+    # 部分微调起点: fc(仅fc) / layer4 / layer3 / layer2 / all
+    unfreeze_from: str = "fc"
 
 
 @dataclass

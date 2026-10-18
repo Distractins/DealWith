@@ -73,9 +73,11 @@ model:
     backbone: "resnet50"
     pretrained: "weights/resnet50-0676ba61.pth"
     dim: 32
-    freeze_backbone: false
-    freeze_bn: false
-    input_size: 224
+    freeze_backbone: true
+    freeze_bn: true
+    input_size: 512
+    # 部分微调: 只解冻 layer3/layer4 + fc (既保留微调能力又避免32M参数过拟合)
+    unfreeze_from: "layer3"
 
   # ---- 协变量分支 (OmicNet) ----
   # 当 mode=pathomic 时, 输入维度由 data.genomic.covariate_cols 自动推断;

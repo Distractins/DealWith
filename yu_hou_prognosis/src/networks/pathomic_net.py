@@ -63,6 +63,7 @@ class PathomicNet(nn.Module):
                 pretrained_path=str(pretrained_path),
                 freeze_backbone=config.model.path.freeze_backbone,
                 freeze_bn=config.model.path.freeze_bn,
+                unfreeze_from=getattr(config.model.path, "unfreeze_from", "fc"),
             )
         else:
             self.path_net = None

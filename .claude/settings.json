@@ -16,7 +16,9 @@
       "Bash(python -c \"import torch; print\\('torch ok'\\)\")",
       "Bash(python -c \"import pandas; print\\('pandas ok'\\)\")",
       "Bash(python -m py_compile config/config_loader.py src/training/cv_runner.py main.py)",
-      "Bash(python -m py_compile src/training/cv_runner.py)"
+      "Bash(python -m py_compile src/training/cv_runner.py)",
+      "Bash(python -m py_compile src/networks/path_net.py src/networks/pathomic_net.py config/config_loader.py)",
+      "Bash(python -m py_compile yu_hou_prognosis/src/networks/path_net.py yu_hou_prognosis/src/networks/pathomic_net.py yu_hou_prognosis/config/config_loader.py)"
     ]
   }
 }
