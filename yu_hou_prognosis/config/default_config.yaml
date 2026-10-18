@@ -75,7 +75,7 @@ model:
     dim: 32
     freeze_backbone: false
     freeze_bn: false
-    input_size: 1024
+    input_size: 224
 
   # ---- 协变量分支 (OmicNet) ----
   # 当 mode=pathomic 时, 输入维度由 data.genomic.covariate_cols 自动推断;

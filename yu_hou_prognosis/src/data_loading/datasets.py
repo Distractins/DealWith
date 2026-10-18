@@ -113,8 +113,10 @@ class PathomicDataset(Dataset):
         self.transforms = self._build_transforms()
 
     def _build_transforms(self):
+        # 统一缩放到 input_size (默认224), 避免1024全分辨率微调显存爆掉/过慢
         if self.split == "train":
             tfms = [
+                transforms.Resize((self.input_size, self.input_size)),
                 transforms.RandomHorizontalFlip(0.5),
                 transforms.RandomVerticalFlip(0.5),
                 transforms.ToTensor(),
@@ -123,6 +125,7 @@ class PathomicDataset(Dataset):
             return transforms.Compose(tfms)
         else:
             tfms = [
+                transforms.Resize((self.input_size, self.input_size)),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
