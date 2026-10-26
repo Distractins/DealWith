@@ -28,7 +28,7 @@ DealWith/
 │       ├── figures/                    #   图表
 │       └── reports/                    #   报告
 │
-└── yu_hou_prognosis/                   # 下游: 多模态预后预测
+├── yu_hou_prognosis/                   # 【历史版本：原预后生存任务，不再维护】
     ├── main.py                         #   统一入口 (eda/train/test/ablation)
     ├── config/default_config.yaml      #   配置文件
     ├── download_weights.sh             #   权重下载脚本
@@ -43,6 +43,24 @@ DealWith/
     │   └── visualization/              #   KM曲线/ROC/校准图
     ├── weights/                        #   (运行时下载, 700MB+)
     └── experiments/                    #   (运行时生成)
+│
+└── mucus_mil_regression/               # 下游: 弱监督MIL回归(Histomolecular)
+    ├── main.py                         #   统一入口 (eda/train/test/ablation/visualize)
+    ├── config/
+    │   ├── default_config.yaml         #   配置文件
+    │   └── ablation/                   #   消融实验配置
+    ├── download_uni_weights.sh         #   UNI权重下载脚本
+    ├── src/
+    │   ├── data_loading/               #   数据加载(patch bag/临床特征/拆分)
+    │   ├── eda/                        #   PCA标签构建 + 数据探索
+    │   ├── feature_engineering/        #   临床特征编码
+    │   ├── networks/                   #   ResNet/UNI主干 + ABMIL + 多模态融合
+    │   ├── losses/                     #   MSE回归损失
+    │   ├── training/                   #   训练/验证/断点/GPU管理
+    │   ├── evaluation/                 #   Spearman/Pearson/MAE/RMSE/R²
+    │   └── visualization/              #   注意力热力图/散点图/消融图
+    ├── weights/                        #   (运行时下载, UNI约1GB)
+    └── experiments/                    #   (运行时生成)
 ```
 
 ## 执行流程
@@ -55,11 +73,19 @@ DealWith/
 
         ↓ patch图像
 
-[2] yu_hou_prognosis
+[2] yu_hou_prognosis  【历史流程：原预后生存任务，不再维护】
     输入1: 上游patch图像
     输入2: COAD_all_dataset.csv (基因组数据)
     运行: python main.py --mode train --fusion_type caugf
     输出: 生存风险预测 + C-index/tdAUC/KM曲线
+
+        ↓ patch图像 (复用同一份上游输出)
+
+[3] mucus_mil_regression
+    输入1: 上游patch图像 (9种采样算法可切换)
+    输入2: COAD_all_dataset.csv (4个基因表达 + 临床协变量)
+    运行: python main.py --mode train --model_type image_mil
+    输出: 粘液分化得分回归 + Spearman/Pearson/MAE/RMSE/R²
 ```
 
 ## 服务器部署

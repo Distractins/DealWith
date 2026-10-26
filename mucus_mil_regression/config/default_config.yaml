@@ -1,0 +1,128 @@
+# ============================================================
+# MucusMIL Regression - 默认配置
+# 弱监督多实例学习(ABMIL)回归任务 - Histomolecular粘液分化得分预测
+# 一个病人=一张WSI=一个bag, patch=实例, 仅bag级回归标签
+# ============================================================
+
+project:
+  name: "MucusMIL_Regression"
+  version: "1.0.0"
+  description: "弱监督MIL(ABMIL)回归 - 粘液分化复合分子得分预测"
+  seed: 2026
+
+# ---- 上游WSI Patch数据 (复用wsi_patch_selection_benchmark输出, 上游代码不动) ----
+upstream:
+  patch_root: "../wsi_patch_selection_benchmark/outputs/patches"
+  # 9种采样算法: grid/stratified/sentinel/random/kmeans/yottixel/splice/sdm/largest_tissue
+  algorithm_name: "grid"
+  file_pattern: "{slide_base}_{idx}.png"
+  num_patches_per_patient: 6
+  patch_size: 224          # backbone输入尺寸 (resnet建议512, uni固定224)
+
+# ---- 数据路径 ----
+data:
+  root: "data"
+  table_csv: "data/COAD_all_dataset.csv"          # 输入表格
+  label_csv: "data/mucus_pc1_labels.csv"          # EDA阶段生成 (PCA PC1标签)
+  split_file: "data/splits/mucus_patient5fold.pkl"
+  patient_id_col: "TCGA ID"
+  # 4个目标基因表达列 (PCA输入)
+  genes: ["REG1A_rnaseq", "REG4_rnaseq", "SPINK4_rnaseq", "ITLN1_rnaseq"]
+  # 临床协变量 (数值+分类)
+  clinical_features: ["age_at_diagnosis", "gender", "tumor_stage", "t", "n", "m", "histological_type"]
+  pca:
+    n_components: 1
+    standardize: true
+    flip_sign_positive: true   # 翻转PC1符号使其与4基因均值正相关(高分=更分化)
+    save_loadings: true
+
+# ---- 模型 ----
+model:
+  # 三组对照: clinical_mlp / image_mil / multimodal
+  model_type: "image_mil"
+  # 主干: resnet(ImageNet预训练) / uni(病理自监督)
+  backbone: "resnet"
+  # 预训练权重路径 (空串则resnet用torchvision默认权重; uni需下载)
+  backbone_pretrained: "weights/resnet50-0676ba61.pth"
+  feat_dim: 2048             # resnet50=2048, uni=1024 (不匹配时自动推断)
+  mil_hidden_dim: 256        # ABMIL投影维度
+  mil_dropout: 0.3
+  clinical_hidden_dims: [64, 32]
+  clinical_dropout: 0.3
+  # multimodal融合: late_concat(晚拼接) / adaptive_gate(自适应门控, 本文改进)
+  fusion_type: "adaptive_gate"
+  fusion_hidden_dim: 256
+
+# ---- 训练配置 ----
+training:
+  device: "auto"
+  gpu_id: 0
+  gpu_memory_fraction: 0.0
+  batch_size: 2              # bag数量 (每个bag含num_patches_per_patient张patch)
+  gradient_accumulation_steps: 2
+  num_workers: 0
+  pin_memory: false
+  optimizer:
+    type: "adamw"
+    lr: 0.0001
+    weight_decay: 0.0001
+    betas: [0.9, 0.999]
+  scheduler:
+    type: "cosine"
+    n_epochs: 30
+    warmup_epochs: 3
+    min_lr: 1.0e-6
+  amp:
+    enabled: true
+    dtype: "float16"
+  loss: "mse"
+  gradient_clip_norm: 1.0
+  early_stopping:
+    enabled: true
+    monitor: "spearman"      # spearman / pearson / loss
+    patience: 8
+    min_delta: 0.0005
+  checkpoint:
+    save_every: 5
+    resume: true
+    keep_last_n: 2
+
+# ---- 交叉验证 (按病人ID, 同一病人patch不跨折) ----
+cross_validation:
+  n_folds: 5
+  fold_ids: [1, 2, 3, 4, 5]
+  val_ratio: 0.2
+
+# ---- 评估 (无生存指标) ----
+evaluation:
+  metrics: ["spearman", "pearson", "mae", "rmse", "r2"]
+
+# ---- 可视化 ----
+visualization:
+  enabled: true
+  dpi: 300
+
+# ---- 实验管理 ----
+experiment:
+  name: "default"
+  output_root: "experiments"
+  subdirs:
+    ckpt: "ckpt"
+    logs: "logs"
+    results: "results"
+    figures: "figures"
+    preds: "preds"
+
+# ---- 日志 ----
+logging:
+  level: "INFO"
+  language: "zh_CN"
+
+# ---- 消融框架 ----
+ablation:
+  # 上游9种patch采样算法 (切换 upstream.algorithm_name)
+  algorithms: ["grid", "random", "kmeans", "yottixel", "stratified", "sentinel", "splice", "sdm", "largest_tissue"]
+  # 多模态融合方式
+  fusions: ["late_concat", "adaptive_gate"]
+  # 三组对照模型
+  model_types: ["clinical_mlp", "image_mil", "multimodal"]

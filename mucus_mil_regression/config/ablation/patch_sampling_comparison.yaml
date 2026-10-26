@@ -1,0 +1,13 @@
+# ============================================================
+# 消融: 上游9种patch采样算法对比 (image_mil)
+# 运行: python main.py --mode ablation --axis algorithms --config 本文件
+# ============================================================
+experiment:
+  name: "ablation_patch_sampling"
+
+model:
+  model_type: "image_mil"
+  backbone: "resnet"
+
+ablation:
+  algorithms: ["grid", "random", "kmeans", "yottixel", "stratified", "sentinel", "splice", "sdm", "largest_tissue"]
