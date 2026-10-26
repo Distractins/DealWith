@@ -229,8 +229,10 @@ def _dict_to_dataclass(cls, data: Dict):
 
 def load_config(config_path: Optional[str] = None, cli_args: Optional[List[str]] = None) -> ConfigBundle:
     import argparse
-    parser = argparse.ArgumentParser(add_help=False)
+    # allow_abbrev=False 防止 --mode 被 argparse 前缀匹配成 --model_type
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument("--config", "-c", type=str, default=None)
+    parser.add_argument("--mode", type=str, default=None)
     parser.add_argument("--model_type", type=str, default=None)
     parser.add_argument("--backbone", type=str, default=None)
     parser.add_argument("--fusion_type", type=str, default=None)

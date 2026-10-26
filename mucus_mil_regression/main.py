@@ -46,7 +46,9 @@ def main():
     args = parser.parse_args()
 
     from config.config_loader import load_config, print_config, create_experiment_dirs
-    config = load_config(args.config)
+    # cli_args=[] 让 load_config 不再重复解析命令行(main.py已自行解析并应用),
+    # 避免 --mode 被误匹配为 --model_type 之类的前缀冲突
+    config = load_config(args.config, cli_args=[])
 
     if args.model_type:
         config.model.model_type = args.model_type
