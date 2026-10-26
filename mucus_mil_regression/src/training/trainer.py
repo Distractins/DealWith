@@ -217,7 +217,8 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
     mode = "min" if monitor == "loss" else "max"
     metric_logger = MetricLogger(monitor=monitor, mode=mode)
 
-    ckpt_dir = config.get_subdir("ckpt") / f"fold{fold_id}"
+    run_tag = getattr(config, "run_tag", "default")
+    ckpt_dir = config.get_subdir("ckpt") / run_tag / f"fold{fold_id}"
     start_epoch = 0
     if config.training.checkpoint.resume:
         from src.training.checkpoint import load_checkpoint

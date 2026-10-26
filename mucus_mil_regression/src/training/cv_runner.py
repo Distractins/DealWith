@@ -58,20 +58,20 @@ def _build_patient_df(config, labels: pd.DataFrame, table: pd.DataFrame) -> pd.D
     return df
 
 
-def _build_fold_data(config, patient_df, patch_map, fold_data, clinical_encoder, logger) -> Dict:
-    """为一个fold构建 train/val/test 数据字典。"""
+def _build_fold_data(config, patient_df, pid_to_pos, patch_map, fold_data, clinical_encoder) -> Dict:
+    """为一个fold构建 train/val/test 数据字典 (用整数位置索引, 避开pandas布尔索引)。"""
     pid_col = config.data.patient_id_col
     need_patches = config.model.model_type in ("image_mil", "multimodal")
 
     def _collect(patient_ids):
         records = []
         for p in patient_ids:
-            row = patient_df[patient_df[pid_col] == p]
-            if len(row) == 0:
+            pos = pid_to_pos.get(p)
+            if pos is None:
                 continue
             if need_patches and p not in patch_map:
                 continue
-            records.append({"pid": p, "y": float(row["y"].iloc[0])})
+            records.append({"pid": p, "pos": pos, "y": float(patient_df.iloc[pos]["y"])})
         return records
 
     train_rec = _collect(fold_data["train"]["patient_ids"])
@@ -92,20 +92,17 @@ def _build_fold_data(config, patient_df, patch_map, fold_data, clinical_encoder,
     else:
         val_rec = []
 
-    # 拟合临床编码器 (仅训练子集)
-    train_ids = [r["pid"] for r in train_rec]
-    sub = patient_df[patient_df[pid_col].isin(train_ids)].copy()
-    clinical_encoder.fit(sub)
+    # 拟合临床编码器 (仅训练子集, 用整数位置iloc)
+    train_pos = [r["pos"] for r in train_rec]
+    clinical_encoder.fit(patient_df.iloc[train_pos].copy())
 
     def _build(records):
         if not records:
             return {"x_path": [], "x_clinical": np.zeros((0, clinical_encoder.output_dim), dtype=np.float32),
                     "y": np.array([], dtype=np.float32), "patient_ids": []}
         ids = [r["pid"] for r in records]
-        sub_df = patient_df[patient_df[pid_col].isin(ids)].copy()
-        # 按 ids 顺序对齐 (isin 不保持顺序, 需显式reindex)
-        sub_df = sub_df.set_index(pid_col).loc[ids].reset_index()
-        clinical = clinical_encoder.transform(sub_df)
+        pos = [r["pos"] for r in records]
+        clinical = clinical_encoder.transform(patient_df.iloc[pos].copy())
         x_path = [patch_map.get(p, []) for p in ids] if need_patches else [[] for _ in ids]
         y = np.array([r["y"] for r in records], dtype=np.float32)
         return {"x_path": x_path, "x_clinical": clinical, "y": y, "patient_ids": ids}
@@ -132,17 +129,20 @@ def _build_all_data(config, logger) -> Dict:
     patient_df = _build_patient_df(config, labels, table)
     logger.info(f"  有效病人(有PC1标签): {len(patient_df)}")
 
+    pid_col = config.data.patient_id_col
     need_patches = config.model.model_type in ("image_mil", "multimodal")
     patch_map = {}
     if need_patches:
         reader = UpstreamPatchReader(config)
         patch_map = reader.build_short_to_patches()
-        # 过滤出有patch的病人
         before = len(patient_df)
-        patient_df = patient_df[patient_df[config.data.patient_id_col].isin(patch_map.keys())].reset_index(drop=True)
+        # 用整数位置索引过滤有patch的病人 (避免pandas布尔/字符串索引)
+        keep_pos = [i for i, pid in enumerate(patient_df[pid_col]) if pid in patch_map]
+        patient_df = patient_df.iloc[keep_pos].reset_index(drop=True)
         logger.info(f"  有patch病人: {len(patient_df)}/{before}")
 
-    pid_col = config.data.patient_id_col
+    # 病人ID -> 整数位置 字典
+    pid_to_pos = {pid: i for i, pid in enumerate(patient_df[pid_col])}
     patient_ids = patient_df[pid_col].tolist()
     y = patient_df["y"].values.astype(np.float64)
 
@@ -151,8 +151,8 @@ def _build_all_data(config, logger) -> Dict:
 
     folds = {}
     for fold_id, fold_data in sorted(splits.items()):
-        folds[f"fold_{fold_id}"] = _build_fold_data(config, patient_df, patch_map,
-                                                     fold_data, clinical_encoder, logger)
+        folds[f"fold_{fold_id}"] = _build_fold_data(config, patient_df, pid_to_pos,
+                                                     patch_map, fold_data, clinical_encoder)
 
     config.model.clinical_input_dim = clinical_encoder.output_dim
     return folds
@@ -167,6 +167,11 @@ def _safe_mean_std(vals):
     if not vals:
         return float("nan"), float("nan")
     return float(np.mean(vals)), float(np.std(vals))
+
+
+def _run_tag(config) -> str:
+    """唯一标识一组实验配置 (模型/主干/融合/采样算法), 用于隔离缓存与断点。"""
+    return f"{config.model.model_type}_{config.model.backbone}_{config.model.fusion_type}_{config.upstream.algorithm_name}"
 
 
 def _save_results(config, fold_results, logger):
@@ -194,12 +199,12 @@ def _save_results(config, fold_results, logger):
         std_row[m] = std
     df_fold = pd.concat([df_fold, pd.DataFrame([mean_row, std_row])], ignore_index=True)
 
-    name = config.experiment.name
-    df_fold.to_csv(results_dir / f"{name}_fold_metrics.csv", index=False, float_format="%.4f")
-    pd.DataFrame(patient_rows).to_csv(results_dir / f"{name}_patient_predictions.csv",
+    tag = _run_tag(config)
+    df_fold.to_csv(results_dir / f"{tag}_fold_metrics.csv", index=False, float_format="%.4f")
+    pd.DataFrame(patient_rows).to_csv(results_dir / f"{tag}_patient_predictions.csv",
                                       index=False, float_format="%.4f")
-    logger.info(f"  折级指标CSV: {results_dir / f'{name}_fold_metrics.csv'}")
-    logger.info(f"  病人预测CSV: {results_dir / f'{name}_patient_predictions.csv'}")
+    logger.info(f"  折级指标CSV: {results_dir / f'{tag}_fold_metrics.csv'}")
+    logger.info(f"  病人预测CSV: {results_dir / f'{tag}_patient_predictions.csv'}")
     return df_fold
 
 
@@ -236,9 +241,10 @@ def run_cross_validation(config) -> Dict:
 
     fold_results = []
     results_dir = config.get_subdir("results")
+    config.run_tag = _run_tag(config)
     for fold_name in run_folds:
         fold_id = int(fold_name.split("_")[-1])
-        cache_path = results_dir / f"{config.experiment.name}_fold{fold_id}_result.pkl"
+        cache_path = results_dir / f"{config.run_tag}_fold{fold_id}_result.pkl"
 
         # 已完成则跳过 (断网续跑: 不重跑已完成的折)
         if cache_path.exists():

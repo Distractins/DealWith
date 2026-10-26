@@ -193,16 +193,18 @@ def _run_ablation(config, axis):
 
 def _run_visualize(config):
     from src.visualization.scatter import plot_pred_true_scatter
+    from src.training.cv_runner import _run_tag
     import pandas as pd
     results_dir = config.get_subdir("results")
     fig_dir = config.get_subdir("figures")
-    csv_path = results_dir / f"{config.experiment.name}_patient_predictions.csv"
+    tag = _run_tag(config)
+    csv_path = results_dir / f"{tag}_patient_predictions.csv"
     if csv_path.exists():
         df = pd.read_csv(csv_path)
         plot_pred_true_scatter(df["y_true"].values, df["y_pred"].values,
-                               save_path=str(fig_dir / f"{config.experiment.name}_scatter.png"),
-                               title=f"{config.experiment.name} 预测vs真实")
-        print(f"散点图已保存: {fig_dir / f'{config.experiment.name}_scatter.png'}")
+                               save_path=str(fig_dir / f"{tag}_scatter.png"),
+                               title=f"{tag} 预测vs真实")
+        print(f"散点图已保存: {fig_dir / f'{tag}_scatter.png'}")
     else:
         print(f"未找到预测CSV: {csv_path}, 请先运行 train")
 
