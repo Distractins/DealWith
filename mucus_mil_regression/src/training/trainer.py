@@ -264,6 +264,9 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
 
     if metric_logger.best_state is not None:
         model.load_state_dict(metric_logger.best_state)
+
+    # 单独保存最佳模型 (供断点续训 / test模式直接加载)
+    torch.save(model.state_dict(), ckpt_dir / f"fold{fold_id}_best.pth")
     return model, metric_logger
 
 

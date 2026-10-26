@@ -5,12 +5,12 @@
 
 保留的原始创新点：
 1. 联合质量-形态评分
-2. 通过 tumor_bias 指标实现肿瘤偏向选择
+2. 通过 tumor_bias 指标做前置过滤，优先保留肿瘤区域patch，剔除大量正常组织背景噪声
 3. 多重约束选择：质量 + 空间多样性 + 特征多样性
 
 策略：
 1. 通过从组织掩码区域随机采样生成候选池
-   （所有其他采样器均采用基于网格的方式）
+  （所有其他采样器均采用基于网格的方式）
 2. 应用三级QC过滤（严格 > 中等 > 宽松 > 回退）
 3. 按QC优先级合并候选块
 4. 施加空间+特征多样性约束
@@ -20,6 +20,7 @@
 - 随机候选生成，而非均匀网格扫描
 - 更大的 candidate_pool_size 以增加探索范围
 - 在 final_score 排序中使用 innovation_weight
+说明：本采样器仅将采样范围收敛至肿瘤区域；粘液分化相关细粒度形态特征，交由下游MIL模型进一步学习。
 """
 
 import logging
@@ -40,8 +41,8 @@ class SentinelSampler(BaseSampler):
 
     与 Grid/LargestTissue 的关键区别在于 Sentinel 使用
     随机候选生成（而非网格扫描），从而探索更多样化的
-    空间位置。结合三级QC过滤和多样性约束，能够产生
-    具有诊断相关性的区域选择。
+    空间位置。结合三级QC过滤和多样性约束，筛选出低冗余、
+    高质量的肿瘤区域patch，为下游学习粘液分化分子表型提供输入。
 
     注意：应使用 CandidatePoolBuilder.build_random() 方法
     （而非 build()）为此采样器生成候选池。这由
@@ -63,8 +64,8 @@ class SentinelSampler(BaseSampler):
 
         Sentinel 算法期望候选块已按
         final_score = baseline + innovation_weight * innovation 进行评分。
-        多样性选择随后按 final_score（而非仅 baseline_score）排序，
-        赋予肿瘤形态学更大的权重。
+        diversity筛选基于final_score排序，优先保留肿瘤区域高质量patch，
+        过滤正常上皮、间质等无关背景噪声。粘液分化的精细形态模式交由下游MIL挖掘。
 
         Args:
             candidate_pool: 预构建的候选池（应通过 build_random()
@@ -72,7 +73,7 @@ class SentinelSampler(BaseSampler):
             num_patches: 目标数量（K）。
 
         Returns:
-            已选的带肿瘤偏向的多样性高质量候选块列表。
+            已筛选得到的、收敛于肿瘤区域的多样化高质量候选块列表。
         """
         if len(candidate_pool) == 0:
             logger.warning(

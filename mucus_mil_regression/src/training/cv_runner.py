@@ -235,8 +235,18 @@ def run_cross_validation(config) -> Dict:
     logger.info(f"  实际运行折: {run_folds}")
 
     fold_results = []
+    results_dir = config.get_subdir("results")
     for fold_name in run_folds:
         fold_id = int(fold_name.split("_")[-1])
+        cache_path = results_dir / f"{config.experiment.name}_fold{fold_id}_result.pkl"
+
+        # 已完成则跳过 (断网续跑: 不重跑已完成的折)
+        if cache_path.exists():
+            with open(cache_path, "rb") as f:
+                fold_results.append(pickle.load(f))
+            logger.info(f"  {fold_name} 已完成, 命中缓存跳过: {cache_path.name}")
+            continue
+
         logger.info("")
         logger.info(f"  >>> {fold_name} 训练开始 <<<")
         fold_data = data_splits[fold_name]
@@ -244,15 +254,20 @@ def run_cross_validation(config) -> Dict:
         model, metric_logger = train(config, fold_data, device, fold_id)
         test_result = test(config, model, fold_data, "test", device)
 
-        fold_results.append({
+        fr = {
             "fold_id": fold_id,
             "metrics": test_result["metrics"],
             "preds": test_result["preds"],
             "targets": test_result["targets"],
             "attn": test_result["attn"],
             "patient_ids": test_result["patient_ids"],
-        })
+        }
+        fold_results.append(fr)
         _log_metrics(logger, fold_id, test_result["metrics"])
+
+        # 保存该折结果 (供断网续跑跳过)
+        with open(cache_path, "wb") as f:
+            pickle.dump(fr, f)
 
         if device.type == "cuda":
             torch.cuda.empty_cache()
