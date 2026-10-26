@@ -22,7 +22,7 @@ upstream:
 # ---- 数据路径 ----
 data:
   root: "data"
-  table_csv: "data/COAD_all_dataset.csv"          # 输入表格
+  table_csv: "../yu_hou_prognosis/data/COAD_all_dataset.csv"  # 输入表格 (复用原下游数据)
   label_csv: "data/mucus_pc1_labels.csv"          # EDA阶段生成 (PCA PC1标签)
   split_file: "data/splits/mucus_patient5fold.pkl"
   patient_id_col: "TCGA ID"
