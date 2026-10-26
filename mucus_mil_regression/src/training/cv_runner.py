@@ -92,9 +92,7 @@ def _build_fold_data(config, patient_df, pid_to_pos, patch_map, fold_data, clini
     else:
         val_rec = []
 
-    # 拟合临床编码器 (仅训练子集, 用整数位置iloc)
-    train_pos = [r["pos"] for r in train_rec]
-    clinical_encoder.fit(patient_df.iloc[train_pos].copy())
+    # 临床编码器已在外层全局fit一次, 这里只用transform (保证各折维度一致)
 
     def _build(records):
         if not records:
@@ -148,6 +146,9 @@ def _build_all_data(config, logger) -> Dict:
 
     splits = _load_or_build_splits(config, patient_ids, y)
     clinical_encoder = ClinicalEncoder(config.data.clinical_features)
+    # 全局fit一次 (5折CV中每个病人都在4个折训练集里, 全局fit等价于"全训练集fit"),
+    # 保证OneHot类别/维度在所有折一致, 避免各折输出维度不同导致模型维度不匹配
+    clinical_encoder.fit(patient_df)
 
     folds = {}
     for fold_id, fold_data in sorted(splits.items()):
