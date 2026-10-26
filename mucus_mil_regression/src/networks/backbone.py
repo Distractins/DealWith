@@ -89,17 +89,30 @@ class _Mlp(nn.Module):
         return self.fc2(self.act(self.fc1(x)))
 
 
+class _LayerScale(nn.Module):
+    """timm ViT的LayerScale (init_values=1e-5), 键名 ls1.gamma / ls2.gamma。"""
+
+    def __init__(self, dim, init_values=1e-5):
+        super().__init__()
+        self.gamma = nn.Parameter(init_values * torch.ones(dim))
+
+    def forward(self, x):
+        return x * self.gamma
+
+
 class _Block(nn.Module):
-    def __init__(self, dim, num_heads, mlp_ratio=4.0):
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, init_values=1e-5):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.attn = _Attention(dim, num_heads)
+        self.ls1 = _LayerScale(dim, init_values)
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = _Mlp(dim, int(dim * mlp_ratio))
+        self.ls2 = _LayerScale(dim, init_values)
 
     def forward(self, x):
-        x = x + self.attn(self.norm1(x))
-        x = x + self.mlp(self.norm2(x))
+        x = x + self.ls1(self.attn(self.norm1(x)))
+        x = x + self.ls2(self.mlp(self.norm2(x)))
         return x
 
 

@@ -38,15 +38,18 @@ class MILBagDataset(Dataset):
         self.transforms = self._build_transforms()
 
     def _build_transforms(self):
+        # ImageNet归一化 (ResNet ImageNet预训练 与 UNI 均使用该统计量)
+        mean = (0.485, 0.456, 0.406)
+        std = (0.229, 0.224, 0.225)
         base = [transforms.Resize((self.patch_size, self.patch_size)),
                 transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+                transforms.Normalize(mean, std)]
         if self.split == "train":
             base = [transforms.Resize((self.patch_size, self.patch_size)),
                     transforms.RandomHorizontalFlip(0.5),
                     transforms.RandomVerticalFlip(0.5),
                     transforms.ToTensor(),
-                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+                    transforms.Normalize(mean, std)]
         return transforms.Compose(base)
 
     def _load_bag(self, patch_list) -> torch.Tensor:
