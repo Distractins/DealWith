@@ -74,8 +74,8 @@ def _build_fold_data(config, patient_df, patch_map, fold_data, clinical_encoder,
             records.append({"pid": p, "y": float(row["y"].iloc[0])})
         return records
 
-    train_rec, _ = _collect(fold_data["train"]["patient_ids"])
-    test_rec, _ = _collect(fold_data["test"]["patient_ids"])
+    train_rec = _collect(fold_data["train"]["patient_ids"])
+    test_rec = _collect(fold_data["test"]["patient_ids"])
 
     # 训练集切val
     from sklearn.model_selection import train_test_split
