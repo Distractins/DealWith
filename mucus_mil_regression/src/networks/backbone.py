@@ -416,7 +416,8 @@ class CTransPathBackbone(nn.Module):
         remap = OrderedDict()
         for k, v in state.items():
             k2 = k
-            for p in ["module.", "net."]:
+            # 去掉 "module.net." / "module." / "net." 前缀 (可嵌套)
+            for p in ["module.net.", "module.", "net."]:
                 if k2.startswith(p):
                     k2 = k2[len(p):]
                     break
