@@ -14,6 +14,7 @@ from collections import OrderedDict
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 # ============================================================
@@ -255,6 +256,217 @@ class ViTB16Backbone(nn.Module):
 
 
 # ============================================================
+# CTransPath (ViT-Hybrid: ResNet-50 stem + Google-ViT encoder)
+# ============================================================
+
+class _GoogleAttention(nn.Module):
+    """Google ViT 注意力 (分离的 query/key/value/out, 非融合qkv)。"""
+
+    def __init__(self, dim, num_heads):
+        super().__init__()
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim ** -0.5
+        self.query = nn.Linear(dim, dim)
+        self.key = nn.Linear(dim, dim)
+        self.value = nn.Linear(dim, dim)
+        self.out = nn.Linear(dim, dim)
+
+    def forward(self, x):
+        B, N, C = x.shape
+        q = self.query(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        k = self.key(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = self.value(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        return self.out(x)
+
+
+class _GoogleBlock(nn.Module):
+    """Google ViT encoder块: attention_norm + attn, ffn_norm + ffn。"""
+
+    def __init__(self, dim, num_heads, mlp_ratio=4.0):
+        super().__init__()
+        self.attention_norm = nn.LayerNorm(dim)
+        self.attn = _GoogleAttention(dim, num_heads)
+        self.ffn_norm = nn.LayerNorm(dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Linear(int(dim * mlp_ratio), dim),
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.attention_norm(x))
+        x = x + self.ffn(self.ffn_norm(x))
+        return x
+
+
+class _Bottleneck(nn.Module):
+    """Google ResNetV2 Bottleneck (GroupNorm, pre-activation), 键名 gn1/conv1/.../downsample/gn_proj。"""
+
+    def __init__(self, nin, nout, stride=1):
+        super().__init__()
+        groups = 32 if nin % 32 == 0 else max(1, nin)
+        self.gn1 = nn.GroupNorm(groups, nin)
+        self.conv1 = nn.Conv2d(nin, nout // 4, 1, bias=False)
+        groups2 = 32 if (nout // 4) % 32 == 0 else max(1, nout // 4)
+        self.gn2 = nn.GroupNorm(groups2, nout // 4)
+        self.conv2 = nn.Conv2d(nout // 4, nout // 4, 3, stride, 1, bias=False)
+        self.gn3 = nn.GroupNorm(groups2, nout // 4)
+        self.conv3 = nn.Conv2d(nout // 4, nout, 1, bias=False)
+        self.use_proj = (nin != nout or stride != 1)
+        if self.use_proj:
+            self.downsample = nn.Conv2d(nin, nout, 1, stride, bias=False)
+            groups_p = 32 if nout % 32 == 0 else max(1, nout)
+            self.gn_proj = nn.GroupNorm(groups_p, nout)
+        else:
+            self.downsample = None
+            self.gn_proj = None
+
+    def forward(self, x):
+        identity = x
+        x = F.relu(self.gn1(x))
+        x = self.conv1(x)
+        x = F.relu(self.gn2(x))
+        x = self.conv2(x)
+        x = F.relu(self.gn3(x))
+        x = self.conv3(x)
+        if self.use_proj:
+            identity = self.gn_proj(self.downsample(identity))
+        return x + identity
+
+
+class _ResNetV2Stem(nn.Module):
+    """Google ResNetV2 stem (root + body.block1~4), 输出 1/16 分辨率。"""
+
+    def __init__(self):
+        super().__init__()
+        self.root = nn.Sequential(
+            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),
+            nn.GroupNorm(32, 64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(3, stride=2, padding=1),
+        )
+        # block1: 3 units, 256; block2: 4 units, 512; block3: 6 units, 1024 (stride2)
+        self.body = nn.Sequential()
+        self.body.block1 = self._make_block(64, 256, 3, stride=1)
+        self.body.block2 = self._make_block(256, 512, 4, stride=2)
+        self.body.block3 = self._make_block(512, 1024, 6, stride=2)
+
+    def _make_block(self, nin, nout, units, stride):
+        layers = []
+        layers.append(_Bottleneck(nin, nout, stride))
+        for _ in range(1, units):
+            layers.append(_Bottleneck(nout, nout, 1))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.root(x)
+        x = self.body.block1(x)
+        x = self.body.block2(x)
+        x = self.body.block3(x)
+        return x  # [B, 1024, H/16, W/16]
+
+
+class CTransPathBackbone(nn.Module):
+    """CTransPath: ResNet-50 hybrid stem + Google-ViT encoder (embed=768, 12层)。
+
+    键名前缀: module.net.transformer.embeddings.* / encoder.layer.*
+    原生 256×256 输入 → 16×16 patch (257 = 1 cls + 256 patch)。
+    """
+
+    def __init__(self, pretrained_path: str = "", embed_dim: int = 768,
+                 depth: int = 12, num_heads: int = 12, freeze: bool = True):
+        super().__init__()
+        self.feat_dim = embed_dim
+        self.stem = _ResNetV2Stem()
+        # 1024 -> embed_dim 的 1x1 投影 (对应 embeddings.patch_embeddings)
+        self.patch_embeddings = nn.Conv2d(1024, embed_dim, 1)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.position_embeddings = nn.Parameter(torch.zeros(1, 257, embed_dim))
+        self.encoder = nn.ModuleList([_GoogleBlock(embed_dim, num_heads) for _ in range(depth)])
+        self.norm = nn.LayerNorm(embed_dim)
+
+        if pretrained_path and os.path.exists(pretrained_path):
+            self._load_pretrained(pretrained_path)
+        else:
+            print(f"[CTransPathBackbone] 未找到权重: {pretrained_path}, 使用随机初始化")
+
+        if freeze:
+            for p in self.parameters():
+                p.requires_grad = False
+            print("[CTransPathBackbone] 主干已冻结 (仅做特征提取)")
+
+    def _load_pretrained(self, path: str):
+        try:
+            ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        except Exception as e:
+            print(f"[CTransPathBackbone] 加载失败: {e}")
+            return
+        state = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+
+        remap = OrderedDict()
+        for k, v in state.items():
+            k2 = k
+            for p in ["module.", "net."]:
+                if k2.startswith(p):
+                    k2 = k2[len(p):]
+                    break
+            # transformer.embeddings.hybrid_model -> stem, patch_embeddings -> patch_embeddings
+            k2 = k2.replace("transformer.embeddings.hybrid_model", "stem")
+            k2 = k2.replace("transformer.embeddings.position_embeddings", "position_embeddings")
+            k2 = k2.replace("transformer.embeddings.cls_token", "cls_token")
+            k2 = k2.replace("transformer.embeddings.patch_embeddings", "patch_embeddings")
+            # encoder.layer.N.xxx -> encoder.N.xxx
+            import re
+            k2 = re.sub(r"transformer\.encoder\.layer\.(\d+)\.", r"encoder.\1.", k2)
+            if k2.startswith("head."):
+                continue
+            remap[k2] = v
+
+        try:
+            self.load_state_dict(remap, strict=False)
+            matched = sum(1 for k in self.state_dict() if k in remap)
+            total = len(self.state_dict())
+            print(f"[CTransPathBackbone] 权重加载: 匹配 {matched}/{total} 个参数")
+        except Exception as e:
+            print(f"[CTransPathBackbone] 权重加载异常: {e}")
+
+    def forward(self, x):
+        B = x.shape[0]
+        x = self.stem(x)                          # [B, 1024, h, w]
+        x = self.patch_embeddings(x)              # [B, 768, h, w]
+        x = x.flatten(2).transpose(1, 2)          # [B, N, 768]
+        cls = self.cls_token.expand(B, -1, -1)
+        x = torch.cat([cls, x], dim=1)            # [B, 1+N, 768]
+
+        # position_embeddings 原生257, 若实际patch数不同则插值
+        pos = self.position_embeddings
+        if x.shape[1] != pos.shape[1]:
+            pos = _interpolate_pos_embed(pos, x.shape[1])
+        x = x + pos
+
+        for blk in self.encoder:
+            x = blk(x)
+        x = self.norm(x)
+        return x[:, 0]  # [B, 768]
+
+
+def _interpolate_pos_embed(pos_embed: torch.Tensor, target_len: int) -> torch.Tensor:
+    """把 (1, L, D) 的位置编码插值到 target_len。"""
+    if pos_embed.shape[1] == target_len:
+        return pos_embed
+    cls = pos_embed[:, :1, :]
+    patch = pos_embed[:, 1:, :]  # [1, L-1, D]
+    patch = patch.permute(0, 2, 1)  # [1, D, L-1]
+    patch = torch.nn.functional.interpolate(patch, size=target_len - 1, mode="linear")
+    patch = patch.permute(0, 2, 1)
+    return torch.cat([cls, patch], dim=1)
+
+
+# ============================================================
 # 工厂
 # ============================================================
 
@@ -283,4 +495,8 @@ def build_backbone(config):
         net = ViTB16Backbone(pretrained_path=pretrained, freeze=freeze)
         return net, net.feat_dim
 
-    raise ValueError(f"不支持的backbone: {backbone_type}。可选: resnet/retccl/uni/phikon/conch")
+    if backbone_type == "ctranspath":
+        net = CTransPathBackbone(pretrained_path=pretrained, freeze=freeze)
+        return net, net.feat_dim
+
+    raise ValueError(f"不支持的backbone: {backbone_type}。可选: resnet/retccl/uni/phikon/conch/ctranspath")

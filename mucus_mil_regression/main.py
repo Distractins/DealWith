@@ -35,7 +35,7 @@ def main():
     parser.add_argument("--model_type", type=str, default=None,
                         choices=["clinical_mlp", "image_mil", "multimodal"])
     parser.add_argument("--backbone", type=str, default=None,
-                        choices=["resnet", "retccl", "uni", "phikon", "conch"])
+                        choices=["resnet", "retccl", "uni", "phikon", "conch", "ctranspath"])
     parser.add_argument("--backbone_pretrained", type=str, default=None,
                         help="主干权重路径, 如 weights/retccl/retccl_weights.pth")
     parser.add_argument("--fusion_type", type=str, default=None,

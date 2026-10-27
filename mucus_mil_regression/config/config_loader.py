@@ -302,7 +302,7 @@ def load_config(config_path: Optional[str] = None, cli_args: Optional[List[str]]
 def _validate(config: ConfigBundle):
     if config.model.model_type not in ("clinical_mlp", "image_mil", "multimodal"):
         raise ValueError(f"不支持的model_type: {config.model.model_type}")
-    if config.model.backbone not in ("resnet", "retccl", "uni", "phikon", "conch"):
+    if config.model.backbone not in ("resnet", "retccl", "uni", "phikon", "conch", "ctranspath"):
         raise ValueError(f"不支持的backbone: {config.model.backbone}")
     if config.model.fusion_type not in ("late_concat", "adaptive_gate"):
         raise ValueError(f"不支持的fusion_type: {config.model.fusion_type}")
