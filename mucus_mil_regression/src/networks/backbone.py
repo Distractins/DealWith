@@ -260,7 +260,7 @@ class ViTB16Backbone(nn.Module):
 # ============================================================
 
 class _GoogleAttention(nn.Module):
-    """Google ViT 注意力 (分离的 query/key/value/out, 非融合qkv)。"""
+    """Google ViT 注意力 (分离的 query/key/value/out) + CTransPath的ta_layer。"""
 
     def __init__(self, dim, num_heads):
         super().__init__()
@@ -271,6 +271,11 @@ class _GoogleAttention(nn.Module):
         self.key = nn.Linear(dim, dim)
         self.value = nn.Linear(dim, dim)
         self.out = nn.Linear(dim, dim)
+        # CTransPath 的 TokenAttention 层 (键名 ta_layer.fc.0/2)
+        self.ta_layer = nn.Module()
+        self.ta_layer.fc = nn.Sequential(
+            nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim),
+        )
 
     def forward(self, x):
         B, N, C = x.shape
@@ -280,7 +285,9 @@ class _GoogleAttention(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        return self.out(x)
+        x = self.out(x)
+        x = x + self.ta_layer.fc(x)  # 残差 token attention
+        return x
 
 
 class _GoogleBlock(nn.Module):
@@ -349,7 +356,7 @@ class _ResNetV2Stem(nn.Module):
         self.body = nn.Module()
         self.body.block1 = self._make_block(64, 256, 3, stride=1)
         self.body.block2 = self._make_block(256, 512, 4, stride=2)
-        self.body.block3 = self._make_block(512, 1024, 6, stride=2)
+        self.body.block3 = self._make_block(512, 1024, 9, stride=2)
 
     def _make_block(self, nin, nout, units, stride):
         block = nn.Module()
@@ -421,6 +428,8 @@ class CTransPathBackbone(nn.Module):
             # encoder.layer.N.xxx -> encoder.N.xxx
             import re
             k2 = re.sub(r"transformer\.encoder\.layer\.(\d+)\.", r"encoder.\1.", k2)
+            # encoder.encoder_norm -> norm (末尾LayerNorm)
+            k2 = k2.replace("transformer.encoder.encoder_norm", "norm")
             if k2.startswith("head."):
                 continue
             remap[k2] = v
