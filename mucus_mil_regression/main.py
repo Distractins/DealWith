@@ -34,7 +34,10 @@ def main():
                         choices=["eda", "train", "test", "ablation", "visualize"])
     parser.add_argument("--model_type", type=str, default=None,
                         choices=["clinical_mlp", "image_mil", "multimodal"])
-    parser.add_argument("--backbone", type=str, default=None, choices=["resnet", "uni"])
+    parser.add_argument("--backbone", type=str, default=None,
+                        choices=["resnet", "retccl", "uni", "phikon", "conch"])
+    parser.add_argument("--backbone_pretrained", type=str, default=None,
+                        help="主干权重路径, 如 weights/retccl/retccl_weights.pth")
     parser.add_argument("--fusion_type", type=str, default=None,
                         choices=["late_concat", "adaptive_gate"])
     parser.add_argument("--algorithm_name", type=str, default=None)
@@ -45,7 +48,7 @@ def main():
                         choices=["models", "algorithms", "fusions"])
     args = parser.parse_args()
 
-    from config.config_loader import load_config, print_config, create_experiment_dirs
+    from config.config_loader import load_config, print_config, create_experiment_dirs, auto_exp_name
     # cli_args=[] 让 load_config 不再重复解析命令行(main.py已自行解析并应用),
     # 避免 --mode 被误匹配为 --model_type 之类的前缀冲突
     config = load_config(args.config, cli_args=[])
@@ -54,12 +57,17 @@ def main():
         config.model.model_type = args.model_type
     if args.backbone:
         config.model.backbone = args.backbone
+    if args.backbone_pretrained:
+        config.model.backbone_pretrained = args.backbone_pretrained
     if args.fusion_type:
         config.model.fusion_type = args.fusion_type
     if args.algorithm_name:
         config.upstream.algorithm_name = args.algorithm_name
     if args.exp_name:
         config.experiment.name = args.exp_name
+    else:
+        # 未指定 --exp_name 时, 自动按 算法/模型类型 建目录
+        config.experiment.name = auto_exp_name(config)
     if args.gpu_id is not None:
         config.training.gpu_id = args.gpu_id
 

@@ -21,7 +21,7 @@ import torch.nn as nn
 # ============================================================
 
 class ResNetBackbone(nn.Module):
-    def __init__(self, pretrained_path: str = "", feat_dim: int = 2048):
+    def __init__(self, pretrained_path: str = "", feat_dim: int = 2048, freeze: bool = True):
         super().__init__()
         import torchvision.models as models
         try:
@@ -36,6 +36,11 @@ class ResNetBackbone(nn.Module):
         self.feat_dim = feat_dim
         # 去掉最后的fc, 只保留特征
         self.net.fc = nn.Identity()
+
+        if freeze:
+            for p in self.net.parameters():
+                p.requires_grad = False
+            print("[ResNetBackbone] 主干已冻结 (仅做特征提取)")
 
     def _load_local(self, path: str):
         try:
@@ -105,10 +110,11 @@ class _Block(nn.Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.attn = _Attention(dim, num_heads)
-        self.ls1 = _LayerScale(dim, init_values)
+        # init_values=None 表示不带LayerScale (CONCH/Phikon等ViT-B用)
+        self.ls1 = _LayerScale(dim, init_values) if init_values is not None else nn.Identity()
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = _Mlp(dim, int(dim * mlp_ratio))
-        self.ls2 = _LayerScale(dim, init_values)
+        self.ls2 = _LayerScale(dim, init_values) if init_values is not None else nn.Identity()
 
     def forward(self, x):
         x = x + self.ls1(self.attn(self.norm1(x)))
@@ -121,14 +127,14 @@ class UNIBackbone(nn.Module):
 
     def __init__(self, pretrained_path: str = "", img_size: int = 224,
                  patch_size: int = 16, embed_dim: int = 1024,
-                 depth: int = 24, num_heads: int = 16):
+                 depth: int = 24, num_heads: int = 16, freeze: bool = True):
         super().__init__()
         self.feat_dim = embed_dim
         self.patch_embed = nn.Conv2d(3, embed_dim, kernel_size=patch_size, stride=patch_size)
         num_patches = (img_size // patch_size) ** 2
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
-        self.blocks = nn.ModuleList([_Block(embed_dim, num_heads) for _ in range(depth)])
+        self.blocks = nn.ModuleList([_Block(embed_dim, num_heads, init_values=1e-5) for _ in range(depth)])
         self.norm = nn.LayerNorm(embed_dim)
         self.head = nn.Identity()  # 只取CLS特征
 
@@ -136,6 +142,11 @@ class UNIBackbone(nn.Module):
             self._load_pretrained(pretrained_path)
         else:
             print(f"[UNIBackbone] 未找到UNI权重: {pretrained_path}, 使用随机初始化")
+
+        if freeze:
+            for p in self.parameters():
+                p.requires_grad = False
+            print("[UNIBackbone] 主干已冻结 (仅做特征提取)")
 
     def _load_pretrained(self, path: str):
         try:
@@ -166,17 +177,110 @@ class UNIBackbone(nn.Module):
 
 
 # ============================================================
+# ViT-B/16 (CONCH / Phikon 等, 纯PyTorch实现)
+# ============================================================
+
+def _strip_prefixes(state: OrderedDict) -> OrderedDict:
+    """去掉checkpoint中常见的前缀, 兼容多种保存格式。"""
+    prefixes = [
+        "module.", "model.", "backbone.", "image_encoder.", "encoder.",
+        "visual.trunk.", "trunk.", "net.",
+    ]
+    out = OrderedDict()
+    for k, v in state.items():
+        k2 = k
+        for p in prefixes:
+            if k2.startswith(p):
+                k2 = k2[len(p):]
+                break
+        out[k2] = v
+    return out
+
+
+class ViTB16Backbone(nn.Module):
+    """ViT-B/16 (timm/OpenCLIP风格), 无LayerScale。
+
+    用于 CONCH(ViT-B/16, 768) / Phikon(ViT-B/16, 768) 等主干。
+    img_size=224, patch=16, embed=768, depth=12, heads=12。
+    """
+
+    def __init__(self, pretrained_path: str = "", img_size: int = 224,
+                 patch_size: int = 16, embed_dim: int = 768,
+                 depth: int = 12, num_heads: int = 12, freeze: bool = True):
+        super().__init__()
+        self.feat_dim = embed_dim
+        self.patch_embed = nn.Conv2d(3, embed_dim, kernel_size=patch_size, stride=patch_size)
+        num_patches = (img_size // patch_size) ** 2
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        self.blocks = nn.ModuleList([_Block(embed_dim, num_heads, init_values=None) for _ in range(depth)])
+        self.norm = nn.LayerNorm(embed_dim)
+        self.head = nn.Identity()
+
+        if pretrained_path and os.path.exists(pretrained_path):
+            self._load_pretrained(pretrained_path)
+        else:
+            print(f"[ViTB16Backbone] 未找到权重: {pretrained_path}, 使用随机初始化")
+
+        if freeze:
+            for p in self.parameters():
+                p.requires_grad = False
+            print("[ViTB16Backbone] 主干已冻结 (仅做特征提取)")
+
+    def _load_pretrained(self, path: str):
+        try:
+            ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        except Exception as e:
+            print(f"[ViTB16Backbone] 加载失败: {e}")
+            return
+        state = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+        state = _strip_prefixes(OrderedDict(state.items()))
+        state = OrderedDict((k, v) for k, v in state.items() if not k.startswith("head."))
+        try:
+            self.load_state_dict(state, strict=False)
+            print(f"[ViTB16Backbone] 已加载权重: {path}")
+        except Exception as e:
+            print(f"[ViTB16Backbone] 权重加载异常: {e}")
+
+    def forward(self, x):
+        B = x.shape[0]
+        x = self.patch_embed(x).flatten(2).transpose(1, 2)
+        cls = self.cls_token.expand(B, -1, -1)
+        x = torch.cat([cls, x], dim=1)
+        x = x + self.pos_embed
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
+        return x[:, 0]
+
+
+# ============================================================
 # 工厂
 # ============================================================
 
 def build_backbone(config):
-    """根据配置构建主干, 返回 (backbone, feat_dim)。"""
+    """根据配置构建主干, 返回 (backbone, feat_dim)。
+
+    支持: resnet(ImageNet) / retccl(ResNet50病理权重) / uni(ViT-L/16) /
+          phikon(ViT-B/16) / conch(ViT-B/16)
+    """
     backbone_type = config.model.backbone
     pretrained = config.model.backbone_pretrained
-    if backbone_type == "resnet":
-        net = ResNetBackbone(pretrained_path=pretrained, feat_dim=2048)
+    freeze = getattr(config.model, "freeze_backbone", True)
+
+    if backbone_type in ("resnet", "retccl"):
+        # retccl = ResNet50 换病理预训练权重 (retccl_weights.pth)
+        if backbone_type == "retccl" and (not pretrained):
+            pretrained = "weights/retccl/retccl_weights.pth"
+        net = ResNetBackbone(pretrained_path=pretrained, feat_dim=2048, freeze=freeze)
         return net, 2048
-    elif backbone_type == "uni":
-        net = UNIBackbone(pretrained_path=pretrained)
+
+    if backbone_type == "uni":
+        net = UNIBackbone(pretrained_path=pretrained, freeze=freeze)
         return net, net.feat_dim
-    raise ValueError(f"不支持的backbone: {backbone_type}")
+
+    if backbone_type in ("phikon", "conch"):
+        net = ViTB16Backbone(pretrained_path=pretrained, freeze=freeze)
+        return net, net.feat_dim
+
+    raise ValueError(f"不支持的backbone: {backbone_type}。可选: resnet/retccl/uni/phikon/conch")

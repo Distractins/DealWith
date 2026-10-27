@@ -54,6 +54,7 @@ class DataConfig:
 class ModelConfig:
     model_type: str = "image_mil"     # clinical_mlp / image_mil / multimodal
     backbone: str = "resnet"          # resnet / uni
+    freeze_backbone: bool = True      # True=冻结主干只做特征提取
     backbone_pretrained: str = "weights/resnet50-0676ba61.pth"
     feat_dim: int = 2048
     mil_hidden_dim: int = 256
@@ -235,6 +236,7 @@ def load_config(config_path: Optional[str] = None, cli_args: Optional[List[str]]
     parser.add_argument("--mode", type=str, default=None)
     parser.add_argument("--model_type", type=str, default=None)
     parser.add_argument("--backbone", type=str, default=None)
+    parser.add_argument("--backbone_pretrained", type=str, default=None)
     parser.add_argument("--fusion_type", type=str, default=None)
     parser.add_argument("--algorithm_name", type=str, default=None)
     parser.add_argument("--exp_name", type=str, default=None)
@@ -262,6 +264,8 @@ def load_config(config_path: Optional[str] = None, cli_args: Optional[List[str]]
         _apply("model.model_type", parsed.model_type)
     if parsed.backbone:
         _apply("model.backbone", parsed.backbone)
+    if parsed.backbone_pretrained:
+        _apply("model.backbone_pretrained", parsed.backbone_pretrained)
     if parsed.fusion_type:
         _apply("model.fusion_type", parsed.fusion_type)
     if parsed.algorithm_name:
@@ -298,7 +302,7 @@ def load_config(config_path: Optional[str] = None, cli_args: Optional[List[str]]
 def _validate(config: ConfigBundle):
     if config.model.model_type not in ("clinical_mlp", "image_mil", "multimodal"):
         raise ValueError(f"不支持的model_type: {config.model.model_type}")
-    if config.model.backbone not in ("resnet", "uni"):
+    if config.model.backbone not in ("resnet", "retccl", "uni", "phikon", "conch"):
         raise ValueError(f"不支持的backbone: {config.model.backbone}")
     if config.model.fusion_type not in ("late_concat", "adaptive_gate"):
         raise ValueError(f"不支持的fusion_type: {config.model.fusion_type}")
@@ -306,6 +310,20 @@ def _validate(config: ConfigBundle):
 
 def create_experiment_dirs(config: ConfigBundle) -> Dict[str, Path]:
     return {k: config.get_subdir(k) for k in config.experiment.subdirs}
+
+
+def auto_exp_name(config: ConfigBundle) -> str:
+    """按「算法/模型类型」自动命名实验目录, 避免手动 --exp_name 混乱。
+
+    返回形如: sentinel/image_mil_resnet, sentinel/multimodal_resnet_adaptive_gate
+    """
+    algo = config.upstream.algorithm_name
+    mt = config.model.model_type
+    if mt == "clinical_mlp":
+        return f"{algo}/clinical_mlp"
+    if mt == "image_mil":
+        return f"{algo}/image_mil_{config.model.backbone}"
+    return f"{algo}/multimodal_{config.model.backbone}_{config.model.fusion_type}"
 
 
 def print_config(config: ConfigBundle, logger=None):

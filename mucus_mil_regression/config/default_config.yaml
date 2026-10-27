@@ -42,6 +42,8 @@ model:
   model_type: "image_mil"
   # 主干: resnet(ImageNet预训练) / uni(病理自监督)
   backbone: "resnet"
+  # 是否冻结主干 (true=只当特征提取器, 治小样本过拟合; false=端到端微调)
+  freeze_backbone: true
   # 预训练权重路径 (空串则resnet用torchvision默认权重; uni需下载)
   backbone_pretrained: "weights/resnet50-0676ba61.pth"
   feat_dim: 2048             # resnet50=2048, uni=1024 (不匹配时自动推断)
