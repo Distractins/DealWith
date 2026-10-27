@@ -309,35 +309,40 @@ class _GoogleBlock(nn.Module):
 
 
 class _Bottleneck(nn.Module):
-    """Google ResNetV2 Bottleneck (GroupNorm, pre-activation), 键名 gn1/conv1/.../downsample/gn_proj。"""
+    """Google ResNetV2 Bottleneck (GroupNorm, post-norm: conv→gn→relu)。
+
+    通道: conv1(nin→nout/4), conv2(nout/4→nout/4), conv3(nout/4→nout)
+    归一化: gn1/gn2 在 nout/4 上, gn3 在 nout 上 (conv3之后)。
+    """
 
     def __init__(self, nin, nout, stride=1):
         super().__init__()
-        groups = 32 if nin % 32 == 0 else max(1, nin)
-        self.gn1 = nn.GroupNorm(groups, nin)
+
+        def _groups(c):
+            return 32 if c % 32 == 0 else max(1, c)
+
         self.conv1 = nn.Conv2d(nin, nout // 4, 1, bias=False)
-        groups2 = 32 if (nout // 4) % 32 == 0 else max(1, nout // 4)
-        self.gn2 = nn.GroupNorm(groups2, nout // 4)
+        self.gn1 = nn.GroupNorm(_groups(nout // 4), nout // 4)
         self.conv2 = nn.Conv2d(nout // 4, nout // 4, 3, stride, 1, bias=False)
-        self.gn3 = nn.GroupNorm(groups2, nout // 4)
+        self.gn2 = nn.GroupNorm(_groups(nout // 4), nout // 4)
         self.conv3 = nn.Conv2d(nout // 4, nout, 1, bias=False)
+        self.gn3 = nn.GroupNorm(_groups(nout), nout)
         self.use_proj = (nin != nout or stride != 1)
         if self.use_proj:
             self.downsample = nn.Conv2d(nin, nout, 1, stride, bias=False)
-            groups_p = 32 if nout % 32 == 0 else max(1, nout)
-            self.gn_proj = nn.GroupNorm(groups_p, nout)
+            self.gn_proj = nn.GroupNorm(_groups(nout), nout)
         else:
             self.downsample = None
             self.gn_proj = None
 
     def forward(self, x):
         identity = x
-        x = F.relu(self.gn1(x))
         x = self.conv1(x)
-        x = F.relu(self.gn2(x))
+        x = F.relu(self.gn1(x))
         x = self.conv2(x)
-        x = F.relu(self.gn3(x))
+        x = F.relu(self.gn2(x))
         x = self.conv3(x)
+        x = F.relu(self.gn3(x))
         if self.use_proj:
             identity = self.gn_proj(self.downsample(identity))
         return x + identity
