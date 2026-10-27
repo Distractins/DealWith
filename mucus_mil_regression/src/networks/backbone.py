@@ -284,22 +284,20 @@ class _GoogleAttention(nn.Module):
 
 
 class _GoogleBlock(nn.Module):
-    """Google ViT encoder块: attention_norm + attn, ffn_norm + ffn。"""
+    """Google ViT encoder块: attention_norm + attn, ffn_norm + ffn (fc1/fc2)。"""
 
     def __init__(self, dim, num_heads, mlp_ratio=4.0):
         super().__init__()
         self.attention_norm = nn.LayerNorm(dim)
         self.attn = _GoogleAttention(dim, num_heads)
         self.ffn_norm = nn.LayerNorm(dim)
-        self.ffn = nn.Sequential(
-            nn.Linear(dim, int(dim * mlp_ratio)),
-            nn.GELU(),
-            nn.Linear(int(dim * mlp_ratio), dim),
-        )
+        self.ffn = nn.Module()
+        self.ffn.fc1 = nn.Linear(dim, int(dim * mlp_ratio))
+        self.ffn.fc2 = nn.Linear(int(dim * mlp_ratio), dim)
 
     def forward(self, x):
         x = x + self.attn(self.attention_norm(x))
-        x = x + self.ffn(self.ffn_norm(x))
+        x = x + self.ffn.fc2(F.gelu(self.ffn.fc1(self.ffn_norm(x))))
         return x
 
 
@@ -339,34 +337,35 @@ class _Bottleneck(nn.Module):
 
 
 class _ResNetV2Stem(nn.Module):
-    """Google ResNetV2 stem (root + body.block1~4), 输出 1/16 分辨率。"""
+    """Google ResNetV2 stem (root + body.block1~3), 输出 1/16 分辨率。"""
 
     def __init__(self):
         super().__init__()
-        self.root = nn.Sequential(
-            nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False),
-            nn.GroupNorm(32, 64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2, padding=1),
-        )
-        # block1: 3 units, 256; block2: 4 units, 512; block3: 6 units, 1024 (stride2)
-        self.body = nn.Sequential()
+        self.root = nn.Module()
+        self.root.conv = nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False)
+        self.root.gn = nn.GroupNorm(32, 64)
+        self.root.maxpool = nn.MaxPool2d(3, stride=2, padding=1)
+
+        self.body = nn.Module()
         self.body.block1 = self._make_block(64, 256, 3, stride=1)
         self.body.block2 = self._make_block(256, 512, 4, stride=2)
         self.body.block3 = self._make_block(512, 1024, 6, stride=2)
 
     def _make_block(self, nin, nout, units, stride):
-        layers = []
-        layers.append(_Bottleneck(nin, nout, stride))
-        for _ in range(1, units):
-            layers.append(_Bottleneck(nout, nout, 1))
-        return nn.Sequential(*layers)
+        block = nn.Module()
+        block.unit1 = _Bottleneck(nin, nout, stride)
+        for i in range(2, units + 1):
+            setattr(block, f"unit{i}", _Bottleneck(nout, nout, 1))
+        return block
 
     def forward(self, x):
-        x = self.root(x)
-        x = self.body.block1(x)
-        x = self.body.block2(x)
-        x = self.body.block3(x)
+        x = self.root.conv(x)
+        x = self.root.gn(x)
+        x = F.relu(x)
+        x = self.root.maxpool(x)
+        for block in [self.body.block1, self.body.block2, self.body.block3]:
+            for unit in block.children():
+                x = unit(x)
         return x  # [B, 1024, H/16, W/16]
 
 
