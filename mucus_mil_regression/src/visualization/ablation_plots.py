@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import List, Optional
 
+try:
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+    plt.rcParams['axes.unicode_minus'] = False
+except Exception:
+    pass
+
 
 def plot_ablation_bar(
     df: pd.DataFrame,

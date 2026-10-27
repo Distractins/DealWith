@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Optional
 from scipy.stats import spearmanr, pearsonr
 
+try:
+    plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+    plt.rcParams['axes.unicode_minus'] = False
+except Exception:
+    pass
+
 
 def plot_pred_true_scatter(
     y_true: np.ndarray,

@@ -201,20 +201,51 @@ def _run_ablation(config, axis):
 
 def _run_visualize(config):
     from src.visualization.scatter import plot_pred_true_scatter
+    from src.visualization.attention_heatmap import plot_attention_heatmap
     from src.training.cv_runner import _run_tag
     import pandas as pd
+    import pickle
+    import numpy as np
     results_dir = config.get_subdir("results")
     fig_dir = config.get_subdir("figures")
     tag = _run_tag(config)
+
+    # 1) 散点图 (从已保存的预测CSV重画)
     csv_path = results_dir / f"{tag}_patient_predictions.csv"
     if csv_path.exists():
         df = pd.read_csv(csv_path)
         plot_pred_true_scatter(df["y_true"].values, df["y_pred"].values,
                                save_path=str(fig_dir / f"{tag}_scatter.png"),
-                               title=f"{tag} 预测vs真实")
+                               title=f"{tag} 预测 vs 真实")
         print(f"散点图已保存: {fig_dir / f'{tag}_scatter.png'}")
     else:
         print(f"未找到预测CSV: {csv_path}, 请先运行 train")
+
+    # 2) 注意力热力图 (从fold结果缓存重画, 无需重新训练)
+    if config.model.model_type == "clinical_mlp":
+        return
+    cache = results_dir / f"{tag}_fold1_result.pkl"
+    if not cache.exists():
+        print(f"未找到fold缓存: {cache.name} (热力图跳过)")
+        return
+    with open(cache, "rb") as f:
+        fr = pickle.load(f)
+    attn = fr.get("attn")
+    pids = fr.get("patient_ids", [])
+    if attn is None or len(attn) == 0 or not pids:
+        print("fold缓存中无注意力权重, 热力图跳过")
+        return
+    from src.data_loading.upstream_reader import UpstreamPatchReader
+    patch_map = UpstreamPatchReader(config).build_short_to_patches()
+    best_idx = int(np.asarray(attn).sum(axis=1).argmax())
+    pid = pids[best_idx]
+    patches = patch_map.get(pid, [])
+    if not patches:
+        print(f"未找到病人 {pid} 的patch, 热力图跳过")
+        return
+    plot_attention_heatmap(patches, attn[best_idx],
+                           save_path=str(fig_dir / f"{tag}_attention_{pid}.png"))
+    print(f"注意力热力图已保存: {fig_dir / f'{tag}_attention_{pid}.png'}")
 
 
 if __name__ == "__main__":
