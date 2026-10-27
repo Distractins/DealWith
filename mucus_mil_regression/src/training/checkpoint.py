@@ -42,7 +42,12 @@ def load_checkpoint(ckpt_dir: Path, fold_id: int, model, optimizer, scaler,
         return 0
     latest = files[-1]
     ckpt = torch.load(str(latest), map_location="cpu", weights_only=False)
-    model.load_state_dict(ckpt["model_state_dict"])
+    # 结构不匹配(如换模型/换backbone)时不要崩溃, 跳过恢复从头训练
+    try:
+        model.load_state_dict(ckpt["model_state_dict"])
+    except RuntimeError as e:
+        print(f"[Checkpoint] 模型结构与断点不匹配, 跳过恢复从头训练: {str(e)[:120]}...")
+        return 0
     optimizer.load_state_dict(ckpt["optimizer_state_dict"])
     if "scaler_state_dict" in ckpt:
         scaler.load_state_dict(ckpt["scaler_state_dict"])
