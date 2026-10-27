@@ -271,10 +271,10 @@ class _GoogleAttention(nn.Module):
         self.key = nn.Linear(dim, dim)
         self.value = nn.Linear(dim, dim)
         self.out = nn.Linear(dim, dim)
-        # CTransPath 的 TokenAttention 层 (键名 ta_layer.fc.0/2)
+        # CTransPath 的 TokenAttention 层 (键名 ta_layer.fc.0/2, 瓶颈 768->48->768)
         self.ta_layer = nn.Module()
         self.ta_layer.fc = nn.Sequential(
-            nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim),
+            nn.Linear(dim, dim // 16), nn.GELU(), nn.Linear(dim // 16, dim),
         )
 
     def forward(self, x):
