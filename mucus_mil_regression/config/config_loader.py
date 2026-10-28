@@ -304,7 +304,7 @@ def _validate(config: ConfigBundle):
         raise ValueError(f"不支持的model_type: {config.model.model_type}")
     if config.model.backbone not in ("resnet", "retccl", "uni", "phikon", "conch", "ctranspath"):
         raise ValueError(f"不支持的backbone: {config.model.backbone}")
-    if config.model.fusion_type not in ("late_concat", "adaptive_gate"):
+    if config.model.fusion_type not in ("late_concat", "adaptive_gate", "arc"):
         raise ValueError(f"不支持的fusion_type: {config.model.fusion_type}")
 
 

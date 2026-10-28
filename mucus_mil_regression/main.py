@@ -39,7 +39,7 @@ def main():
     parser.add_argument("--backbone_pretrained", type=str, default=None,
                         help="主干权重路径, 如 weights/retccl/retccl_weights.pth")
     parser.add_argument("--fusion_type", type=str, default=None,
-                        choices=["late_concat", "adaptive_gate"])
+                        choices=["late_concat", "adaptive_gate", "arc"])
     parser.add_argument("--algorithm_name", type=str, default=None)
     parser.add_argument("--exp_name", type=str, default=None)
     parser.add_argument("--gpu_id", type=int, default=None)
