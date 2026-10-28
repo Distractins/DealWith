@@ -125,6 +125,9 @@ def _train_one_epoch(model, loader, optimizer, scheduler, scaler, config, device
     use_amp = config.training.amp.enabled
     running = 0.0
     n = 0
+    ent_sum = 0.0
+    w_sum = 0.0
+    n_arc = 0
     optimizer.zero_grad(set_to_none=True)
 
     for i, (bag, clinical, y) in enumerate(loader):
@@ -136,6 +139,12 @@ def _train_one_epoch(model, loader, optimizer, scheduler, scaler, config, device
         with amp_ctx:
             out, _attn = model(bag, clinical)
             loss = mse_loss(out, y) / accum
+
+        # 统计 ARC 的注意力熵与门控权重 (仅 arc 融合, 供后续分析)
+        if hasattr(model, "fusion") and hasattr(model.fusion, "last_entropy"):
+            ent_sum += model.fusion.last_entropy
+            w_sum += model.fusion.last_w
+            n_arc += 1
 
         scaler.scale(loss).backward()
         if (i + 1) % accum == 0 or (i + 1) == len(loader):
@@ -149,7 +158,10 @@ def _train_one_epoch(model, loader, optimizer, scheduler, scaler, config, device
 
         running += loss.item() * accum
         n += 1
-    return running / max(n, 1)
+
+    avg_entropy = (ent_sum / n_arc) if n_arc > 0 else None
+    avg_w = (w_sum / n_arc) if n_arc > 0 else None
+    return running / max(n, 1), avg_entropy, avg_w
 
 
 # ============================================================
@@ -230,7 +242,7 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
                 f"{config.training.gradient_accumulation_steps}, monitor={monitor}")
 
     for epoch in range(start_epoch, n_epochs):
-        train_loss = _train_one_epoch(model, train_loader, optimizer, scheduler, scaler, config, device)
+        train_loss, avg_entropy, avg_w = _train_one_epoch(model, train_loader, optimizer, scheduler, scaler, config, device)
 
         val_score = None
         val_metrics = None
@@ -248,6 +260,8 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
             metric_logger.update(epoch + 1, -train_loss, model)  # 无val时用train loss兜底
 
         log = f"  [Fold {fold_id}] Epoch {epoch+1}/{n_epochs} | loss={train_loss:.4f}"
+        if avg_entropy is not None:
+            log += f" | ent={avg_entropy:.3f} w={avg_w:.3f}"
         if val_score is not None and not np.isnan(val_score):
             log += f" | val_{monitor}={val_score:.4f}"
         logger.info(log)
