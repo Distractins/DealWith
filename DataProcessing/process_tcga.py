@@ -126,7 +126,9 @@ def parse_rna(rna_dir, mapping):
         try:
             gene_tpm = {}
             with open(tsv, encoding="utf-8", errors="ignore") as f:
-                reader = csv.DictReader(f, delimiter="\t")
+                # 跳过 '#' 开头的注释行 (如 "# gene-model: GENCODE v36")
+                lines = (l for l in f if not l.startswith("#"))
+                reader = csv.DictReader(lines, delimiter="\t")
                 for row in reader:
                     gn = row.get("gene_name", "")
                     if gn in TARGET_GENES:
