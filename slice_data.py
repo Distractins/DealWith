@@ -31,15 +31,22 @@ CONFIG_FILE = os.path.join(UPSTREAM_DIR, "configs", "default_config.yaml")
 
 
 def _set_config(wsi_root, output_root):
-    """改写上游配置文件里的 wsi_root 和 output_root (字符串替换, 保留其它内容)。"""
+    """逐行改写上游配置文件的 wsi_root 和 output_root (只动这两行, 其它原样保留)。"""
     with open(CONFIG_FILE, encoding="utf-8") as f:
-        text = f.read()
+        lines = f.readlines()
     wsi_fwd = wsi_root.replace("\\", "/")
     out_fwd = output_root.replace("\\", "/")
-    text = re.sub(r'wsi_root:\s*"[^"]*"', f'wsi_root: "{wsi_fwd}"', text, count=1)
-    text = re.sub(r'output_root:\s*"[^"]*"', f'output_root: "{out_fwd}"', text, count=1)
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("wsi_root:"):
+            out.append(f'wsi_root: "{wsi_fwd}"\n')
+        elif stripped.startswith("output_root:"):
+            out.append(f'output_root: "{out_fwd}"\n')
+        else:
+            out.append(line)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        f.write(text)
+        f.writelines(out)
 
 
 def main():
