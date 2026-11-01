@@ -13,9 +13,13 @@ datasets:
     wsi_root: "D:/xcjhhh/TCGA_COAD_WSI"                              # COAD 的 .svs 目录
     upstream_output: "wsi_patch_selection_benchmark/outputs"          # 上游输出目录(相对仓库根)
     table_csv: "mucus_mil_regression/data/COAD_all_dataset.csv"       # 下游表格(相对仓库根)
+    label_csv: "mucus_mil_regression/data/mucus_pc1_labels_coad.csv"  # PC1标签(相对仓库根)
+    split_file: "mucus_mil_regression/data/splits/mucus_patient5fold_coad.pkl"  # 5折划分(相对仓库根)
     exp_prefix: "coad"                                                # 实验目录前缀
   READ:
     wsi_root: "D:/xcjhhh/TCGA_READ_WSI"                              # READ 的 .svs 目录 (需确认)
     upstream_output: "wsi_patch_selection_benchmark/outputs_read"     # 上游输出目录(相对仓库根)
     table_csv: "DataProcessing/READ/READ_processed.csv"               # 下游表格(相对仓库根)
+    label_csv: "mucus_mil_regression/data/mucus_pc1_labels_read.csv"  # PC1标签(相对仓库根)
+    split_file: "mucus_mil_regression/data/splits/mucus_patient5fold_read.pkl"  # 5折划分(相对仓库根)
     exp_prefix: "read"                                                # 实验目录前缀

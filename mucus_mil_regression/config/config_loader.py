@@ -323,9 +323,23 @@ def _apply_dataset_override(config: ConfigBundle):
             p = repo_root / p
         config.data.table_csv = str(p.resolve())
 
+    # 标签/划分也按数据集隔离, 避免 COAD/READ 互相覆盖
+    label_csv = d.get("label_csv", "")
+    if label_csv:
+        p = Path(label_csv)
+        if not p.is_absolute():
+            p = repo_root / p
+        config.data.label_csv = str(p.resolve())
+    split_file = d.get("split_file", "")
+    if split_file:
+        p = Path(split_file)
+        if not p.is_absolute():
+            p = repo_root / p
+        config.data.split_file = str(p.resolve())
+
     config.exp_prefix = d.get("exp_prefix", active.lower())
     config.dataset_name = active
-    print(f"[dataset] active={active}, 表格={config.data.table_csv}")
+    print(f"[dataset] active={active}, 表格={config.data.table_csv}, 标签={config.data.label_csv}")
 
 
 def _validate(config: ConfigBundle):

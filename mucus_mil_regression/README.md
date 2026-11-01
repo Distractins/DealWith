@@ -62,7 +62,7 @@ mucus_mil_regression/
 
 # 1) 生成 PCA PC1 标签 (一次性, EDA阶段)
 python main.py --mode eda
-# 输出 data/mucus_pc1_labels.csv + .loadings.csv
+# 输出 data/mucus_pc1_labels_{coad|read}.csv + .loadings.csv (按 dataset_config.yaml 的 active 自动隔离)
 ```
 
 ### 1. 训练

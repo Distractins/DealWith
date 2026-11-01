@@ -114,7 +114,15 @@ def _load_or_build_splits(config, patient_ids, y) -> Dict:
         with open(split_file, "rb") as f:
             raw = pickle.load(f)
         if isinstance(raw, dict) and "cv_splits" in raw:
-            return raw["cv_splits"]
+            splits = raw["cv_splits"]
+            # 校验旧划分里的病人ID与当前数据一致 (防止COAD/READ切数据集后复用旧划分)
+            saved_ids = set()
+            for fd in splits.values():
+                saved_ids |= set(fd.get("train", {}).get("patient_ids", []))
+                saved_ids |= set(fd.get("test", {}).get("patient_ids", []))
+            if saved_ids == set(patient_ids):
+                return splits
+            print(f"[SplitBuilder] 旧划分病人ID与当前数据不一致, 重新生成: {split_file}")
     splits = build_regression_splits(patient_ids, y, config.cross_validation.n_folds,
                                      config.project.seed)
     save_splits(splits, split_file)
