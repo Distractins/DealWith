@@ -1,0 +1,4 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+d4d8cb1b-76bd-46b1-952a-3b03a9d9b9a6	\N	aliquot	b2282d62-a66d-4b64-a8c6-954e2d776358	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+90aef603-60d8-5076-a83a-4ae42e1ee223	12012	case	e2d395f8-bf13-4fe4-8031-683b0eedd875	Synchronous malignancy	Notification	2012-11-10T00:00:00	Approved	Pt with synchronous skin cancer.
+a9ab8152-8b0a-44f1-be42-c1c3d99c4140	\N	aliquot	b2282d62-a66d-4b64-a8c6-954e2d776358	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.

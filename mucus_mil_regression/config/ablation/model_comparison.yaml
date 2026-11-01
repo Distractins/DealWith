@@ -1,0 +1,10 @@
+# ============================================================
+# 三组对照实验: clinical_mlp / image_mil / multimodal
+# 运行: python main.py --mode ablation --axis models --config 本文件
+# ============================================================
+experiment:
+  name: "ablation_models"
+
+model:
+  backbone: "resnet"
+  fusion_type: "adaptive_gate"

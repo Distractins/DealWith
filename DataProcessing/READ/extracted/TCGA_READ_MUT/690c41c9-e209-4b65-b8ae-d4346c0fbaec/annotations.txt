@@ -1,0 +1,3 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+82070a09-ee14-5a50-b23f-bb9a36ab81cc	903	case	c69dec57-7a84-481b-bcfe-61a771d0a9d1	Molecular analysis outside specification	Notification	2010-11-23T00:00:00	Approved	IGC new notification of 11/10/2010
+3865529b-0fe8-4438-ae7b-d7fd0b2a7d8e	\N	masked_somatic_mutation	690c41c9-e209-4b65-b8ae-d4346c0fbaec	General	Notification	2022-02-28T13:54:35.149474-06:00	Approved	Variants from SomaticSniper are not included.

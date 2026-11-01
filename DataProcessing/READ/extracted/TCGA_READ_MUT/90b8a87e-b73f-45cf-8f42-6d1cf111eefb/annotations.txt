@@ -1,0 +1,3 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+cea5460f-f1bd-4f19-8d5d-d150ea0a9f20	\N	masked_somatic_mutation	90b8a87e-b73f-45cf-8f42-6d1cf111eefb	General	Notification	2022-02-28T13:57:02.897425-06:00	Approved	Variants from SomaticSniper are not included.
+cc7c658c-68b2-5558-b6dd-740496de8d45	28365	case	b26143d3-d458-4d5c-8446-fd2f05707352	Neoadjuvant therapy	Notification	2015-05-19T00:00:00	Approved	TSS informed the BCR that the patient starting receiving chemotherapy (Leucovorin, Fluorouracil and Oxaliplatin) 1 month prior to TCGA cancer procurement and continued after surgery.

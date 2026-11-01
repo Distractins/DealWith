@@ -1,0 +1,5 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+1baab405-44bd-57b9-aa63-9af2e953f4b8	15318	case	51c37449-6a2e-4c3d-a7cc-06f901e1224f	Prior malignancy	Notification	2013-02-22T00:00:00	Approved	Patient had a prior prostate cancer. No radiation or systemic chemotherapy.
+c03d4e60-aaad-54b3-a82d-767499d3f211	805	case	51c37449-6a2e-4c3d-a7cc-06f901e1224f	Prior malignancy	Notification	2010-10-28T00:00:00	Approved	No Note Specified
+812ff056-d049-48a9-a7fc-78194ae9bf47	\N	masked_somatic_mutation	931d6963-3bcf-4747-bc39-e8a3142656fc	General	Notification	2022-02-28T12:21:25.790880-06:00	Approved	Variants from SomaticSniper are not included.
+3d086829-de62-5d08-b848-ce0724188ff0	20743	case	51c37449-6a2e-4c3d-a7cc-06f901e1224f	History of unacceptable prior treatment related to a prior/other malignancy	Notification	2014-06-16T00:00:00	Approved	unknown treatment history

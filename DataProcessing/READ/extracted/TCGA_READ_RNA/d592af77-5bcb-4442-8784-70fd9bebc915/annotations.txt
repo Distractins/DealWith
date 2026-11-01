@@ -1,0 +1,5 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+ec53554f-0d5e-4e27-92da-0fe4d37ae308	\N	aliquot	bb512143-3a0c-4d43-a54b-0a7e607faad8	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+5828c141-3080-5041-a919-d17578588051	20870	case	594a52b0-c929-4e50-ae27-7542e32667ae	Prior malignancy	Notification	2014-06-20T00:00:00	Approved	Prior malignancy pancreas cancer treated with radiation
+6510a07f-86b0-4a85-8273-58b59fe136e4	\N	aliquot	bb512143-3a0c-4d43-a54b-0a7e607faad8	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+2cbf7bf2-9648-5e5d-ac16-e3a60da439d8	12009	case	594a52b0-c929-4e50-ae27-7542e32667ae	History of acceptable prior treatment related to a prior/other malignancy	Notification	2012-11-10T00:00:00	Approved	Prior malignancy  pancreas cancer treated w/radiation.

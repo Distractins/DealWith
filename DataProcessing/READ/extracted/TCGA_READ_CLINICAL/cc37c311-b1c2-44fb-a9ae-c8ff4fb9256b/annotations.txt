@@ -1,0 +1,5 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+5b793295-399d-5394-a379-da5a716791ab	12007	case	a4faf514-50af-43ed-b294-350ee0756250	Qualification metrics changed	Notification	2012-11-10T00:00:00	Approved	Changes to qualification metrics
+afec6247-df93-5d6c-9ea0-2d7fcf08fa88	2709	case	a4faf514-50af-43ed-b294-350ee0756250	Subject withdrew consent	Redaction	2011-05-20T00:00:00	Approved	[intgen.org]: Subject Withdrew Consent
+4983602b-16f3-5726-aea8-4c549d7ff913	674	case	a4faf514-50af-43ed-b294-350ee0756250	Qualification metrics changed	Notification	2010-09-02T00:00:00	Approved	[intgen.org]: Changes to qualification metrics
+f712dcbd-7cfa-511f-993e-5599a424eae1	2709	case	a4faf514-50af-43ed-b294-350ee0756250	Subject withdrew consent	Redaction	2011-05-20T00:00:00	Approved	Subject_Withdrew_Consent_Date=4/15/2011

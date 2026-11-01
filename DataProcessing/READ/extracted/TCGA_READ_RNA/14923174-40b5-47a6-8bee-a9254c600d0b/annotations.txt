@@ -1,0 +1,4 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+0549566e-03e9-4527-be13-7a5a28973629	\N	aliquot	317fa204-40fa-41c1-8828-bf7da1019ebd	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+ce5c1b60-50ec-43f0-b9d6-f41847aa9ed8	\N	aliquot	317fa204-40fa-41c1-8828-bf7da1019ebd	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+139352e2-3de9-5d28-adbf-fda90e47e998	2393	case	71a32fca-d48f-4ea3-8df7-69f9dda8fa91	Item in special subset	Notification	2011-04-06T00:00:00	Approved	Case came in as Rectal. BCR was notified that case was Colon. Program Office determined this will be a Notification vs. a Redaction

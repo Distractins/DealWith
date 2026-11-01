@@ -1,0 +1,5 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+f1b5ab46-2fd6-469f-a0ab-c4ae088fa70a	\N	aliquot	a4399e70-4d94-4f44-9d25-40407112dc44	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+a0161dec-20fb-5f12-9fa7-8117405e0fa0	806	case	09daff79-6493-45c1-8cba-9381259e2bea	Prior malignancy	Notification	2010-10-28T00:00:00	Approved	No Note Specified
+84ac9930-8435-5d56-bea4-270be192aa4d	15319	case	09daff79-6493-45c1-8cba-9381259e2bea	Prior malignancy	Notification	2013-02-22T00:00:00	Approved	Patient had a prior melanoma of trunk, and skin cancer in the head and neck. No radiation or systemic chemotherapy.
+3b5ab7c0-8a2c-4a3e-beee-68d450e75dce	\N	aliquot	a4399e70-4d94-4f44-9d25-40407112dc44	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.

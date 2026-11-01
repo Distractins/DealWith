@@ -1,0 +1,5 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+d6d15871-f03e-4f05-b287-1796c2fde01a	\N	aliquot	c34349e9-08b2-4e1e-8d69-6a3d6b8a7a72	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+962f9ed6-6d45-52b2-86c8-d76922ad012c	11787	case	03a9dd9d-62ae-4acd-9272-389274858f3d	Prior malignancy	Notification	2012-10-31T00:00:00	Approved	Prior malignancy prostate cancer treated with chemotherapy.
+5e31fdf6-26dd-4eaa-ab0c-853b49882b81	\N	aliquot	c34349e9-08b2-4e1e-8d69-6a3d6b8a7a72	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+92f9b3fc-d8fd-5faa-bc83-a8e430fb3853	12008	case	03a9dd9d-62ae-4acd-9272-389274858f3d	History of unacceptable prior treatment related to a prior/other malignancy	Notification	2012-11-10T00:00:00	Approved	Prior malignancy prostate cancer treated with chemotherapy.

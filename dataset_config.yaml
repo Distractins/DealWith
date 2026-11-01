@@ -1,0 +1,21 @@
+# ============================================================
+# 数据集切换配置 - 只需要改 active 这一个值 (READ 或 COAD)
+# 改完后:
+#   1. 切片:  python slice_data.py
+#   2. 训练:  cd mucus_mil_regression && python main.py --mode train ...
+# 都会自动用对应的 WSI 路径 / 输出目录 / 表格 / 实验文件夹
+# ============================================================
+
+active: "READ"          # ← 改成 "READ" 或 "COAD"
+
+datasets:
+  COAD:
+    wsi_root: "D:/xcjhhh/TCGA_COAD_WSI"                              # COAD 的 .svs 目录
+    upstream_output: "wsi_patch_selection_benchmark/outputs"          # 上游输出目录(相对仓库根)
+    table_csv: "mucus_mil_regression/data/COAD_all_dataset.csv"       # 下游表格(相对仓库根)
+    exp_prefix: "coad"                                                # 实验目录前缀
+  READ:
+    wsi_root: "D:/xcjhhh/TCGA_READ_WSI"                              # READ 的 .svs 目录 (需确认)
+    upstream_output: "wsi_patch_selection_benchmark/outputs_read"     # 上游输出目录(相对仓库根)
+    table_csv: "DataProcessing/READ/READ_processed.csv"               # 下游表格(相对仓库根)
+    exp_prefix: "read"                                                # 实验目录前缀

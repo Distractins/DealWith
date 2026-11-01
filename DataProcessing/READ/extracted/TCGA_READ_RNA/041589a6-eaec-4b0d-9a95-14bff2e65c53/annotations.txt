@@ -1,0 +1,6 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+97b8348d-111d-5ae1-ab7c-07384328db9d	20742	case	9f4574ec-a58a-4410-8735-c5e5bc4ca7e0	History of unacceptable prior treatment related to a prior/other malignancy	Notification	2014-06-16T00:00:00	Approved	unknown treatment history
+7a1fc886-2d67-4a3b-9a76-01d60ef634c0	\N	aliquot	05614260-6c9c-4225-9ea1-dd5458b6afba	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+4c08a02e-8b7e-4a28-bd02-43048b322300	\N	aliquot	05614260-6c9c-4225-9ea1-dd5458b6afba	General	Notification	2022-08-08T12:45:14.613836-05:00	Approved	Some RNA-Seq file types may be missing from this aliquot due to it being processed with single-end sequencing.
+0e873087-028d-59b9-ad7c-d2bf2cdf6f57	804	case	9f4574ec-a58a-4410-8735-c5e5bc4ca7e0	Prior malignancy	Notification	2010-10-28T00:00:00	Approved	No Note Specified
+21e7667a-97c3-5b46-9e1c-7058e3979d70	15317	case	9f4574ec-a58a-4410-8735-c5e5bc4ca7e0	Prior malignancy	Notification	2013-02-22T00:00:00	Approved	Patient had a prior prostate cancer. No radiation or systemic chemotherapy.

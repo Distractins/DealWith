@@ -1,0 +1,3 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+42d7187d-1df6-5e7a-a295-fbc422d2c7c1	2909	case	2faf928d-453a-4d07-b058-b5d4e1d13845	Item in special subset	Notification	2011-06-21T00:00:00	Approved	Case came in as Rectal. BCR was notified that case was Colon. Program Office determined this will be a Notification vs. a Redaction
+68f9993e-9897-4dfb-8d63-27235a4a9f0f	\N	masked_somatic_mutation	7c652eb0-1bc8-4a10-91e6-7611da6dbf12	General	Notification	2022-02-28T12:53:58.982718-06:00	Approved	Variants from SomaticSniper are not included.

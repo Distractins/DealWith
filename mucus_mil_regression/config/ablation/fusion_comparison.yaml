@@ -1,0 +1,13 @@
+# ============================================================
+# 消融: 多模态融合方式对比 (late_concat vs adaptive_gate)
+# 运行: python main.py --mode ablation --axis fusions --config 本文件
+# ============================================================
+experiment:
+  name: "ablation_fusion"
+
+model:
+  model_type: "multimodal"
+  backbone: "resnet"
+
+ablation:
+  fusions: ["late_concat", "adaptive_gate"]

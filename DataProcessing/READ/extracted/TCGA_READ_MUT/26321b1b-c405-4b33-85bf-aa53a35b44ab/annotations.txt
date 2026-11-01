@@ -1,0 +1,4 @@
+id	submitter_id	entity_type	entity_id	category	classification	created_datetime	status	notes
+a0161dec-20fb-5f12-9fa7-8117405e0fa0	806	case	09daff79-6493-45c1-8cba-9381259e2bea	Prior malignancy	Notification	2010-10-28T00:00:00	Approved	No Note Specified
+ad358658-4082-477e-9a2c-33c2ba61213d	\N	masked_somatic_mutation	26321b1b-c405-4b33-85bf-aa53a35b44ab	General	Notification	2022-02-28T12:20:07.451962-06:00	Approved	Variants from SomaticSniper are not included.
+84ac9930-8435-5d56-bea4-270be192aa4d	15319	case	09daff79-6493-45c1-8cba-9381259e2bea	Prior malignancy	Notification	2013-02-22T00:00:00	Approved	Patient had a prior melanoma of trunk, and skin cancer in the head and neck. No radiation or systemic chemotherapy.
