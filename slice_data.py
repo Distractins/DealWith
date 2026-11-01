@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-slice_data.py - 一键切片 (自动用 dataset_config.yaml 里的 active 数据集)。
+slice_data.py - 一键切片 (提示当前数据集, 然后直接跑上游)。
 
-关键点:
-    1. 上游 run_patch_selection.py 忽略命令行参数(load_config解析空列表),
-       只认配置文件 configs/default_config.yaml。所以本脚本直接改写配置文件。
-    2. OpenSlide 4.0.1 在 Windows 有崩溃bug(进程退出时tiff cache断言失败),
-       但 patch 在崩溃前已经保存, 且上游有 progress.json 断点续跑。
-    3. 所以: 跑一次会切一批(可能中途崩), 重跑本脚本自动续传, 多跑几次直到全切完。
+重要:
+    - 上游只认 wsi_patch_selection_benchmark/configs/default_config.yaml,
+      且忽略命令行参数。所以切换数据集要手动改那个配置文件里的两行:
+          wsi_root
+          output_root
+    - 本脚本【不修改任何配置文件】, 避免运行时写坏配置。
 
 用法:
-    python slice_data.py
-    (崩溃了就再跑一次, 会自动跳过已完成的、继续切剩下的)
+    1. (切换数据集时) 手动改 configs/default_config.yaml 的 wsi_root / output_root
+    2. python slice_data.py   (崩溃了就重跑, 自动续传)
 """
 
 import os
-import re
 import sys
 import subprocess
 
@@ -25,63 +24,32 @@ except ImportError:
     print("需要 PyYAML: pip install pyyaml")
     sys.exit(1)
 
-BASE = os.path.dirname(os.path.abspath(__file__))  # 仓库根
+BASE = os.path.dirname(os.path.abspath(__file__))
 UPSTREAM_DIR = os.path.join(BASE, "wsi_patch_selection_benchmark")
-CONFIG_FILE = os.path.join(UPSTREAM_DIR, "configs", "default_config.yaml")
-
-
-def _set_config(wsi_root, output_root):
-    """逐行改写上游配置文件的 wsi_root 和 output_root (只动这两行, 其它原样保留)。"""
-    with open(CONFIG_FILE, encoding="utf-8") as f:
-        lines = f.readlines()
-    wsi_fwd = wsi_root.replace("\\", "/")
-    out_fwd = output_root.replace("\\", "/")
-    out = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("wsi_root:"):
-            out.append(f'wsi_root: "{wsi_fwd}"\n')
-        elif stripped.startswith("output_root:"):
-            out.append(f'output_root: "{out_fwd}"\n')
-        else:
-            out.append(line)
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        f.writelines(out)
 
 
 def main():
-    cfg_path = os.path.join(BASE, "dataset_config.yaml")
-    with open(cfg_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-
+    # 读 dataset_config.yaml 仅用于提示, 不改任何文件
+    cfg = yaml.safe_load(open(os.path.join(BASE, "dataset_config.yaml"), encoding="utf-8"))
     active = cfg.get("active", "COAD")
     d = (cfg.get("datasets") or {}).get(active, {})
-    if not d:
-        print(f"[slice] 错误: dataset_config.yaml 里没有数据集 '{active}'")
-        sys.exit(1)
-
-    wsi_root = d.get("wsi_root", "")
-    output_root = os.path.join(BASE, d.get("upstream_output", "outputs"))
 
     print("=" * 60)
-    print(f"  切片数据集: {active}")
-    print(f"  WSI 目录 : {wsi_root}")
-    print(f"  输出目录 : {output_root}")
-    print(f"  模式     : 批量切 (崩溃重跑自动续传)")
+    print(f"  当前数据集: {active}")
+    print(f"  上游配置文件: {os.path.join(UPSTREAM_DIR, 'configs', 'default_config.yaml')}")
+    print(f"  请确认配置里的 wsi_root 指向 {d.get('wsi_root', '?')}")
+    print(f"  请确认配置里的 output_root 是 {d.get('upstream_output', '?').split('/')[-1]}")
     print("=" * 60)
 
-    # 改写配置文件 (上游只认配置文件)
-    _set_config(wsi_root, output_root)
-
-    # 跑上游一次 (批量)
+    # 直接跑上游 (不改配置)
     r = subprocess.run([sys.executable, "run_patch_selection.py"], cwd=UPSTREAM_DIR)
 
     print("\n" + "=" * 60)
     if r.returncode == 0:
-        print("  切片完成! (正常退出)")
+        print("  切片完成!")
     else:
-        print(f"  本次退出码 {r.returncode} (OpenSlide崩溃, 但已完成的patch已保存)")
-        print("  → 直接重跑: python slice_data.py  会自动续传剩下的")
+        print(f"  退出码 {r.returncode} (OpenSlide崩溃/中断, 已完成部分已保存)")
+        print("  → 重跑 python slice_data.py 自动续传")
     print("=" * 60)
 
 
