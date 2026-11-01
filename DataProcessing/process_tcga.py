@@ -126,14 +126,28 @@ def parse_rna(rna_dir, mapping):
         try:
             gene_tpm = {}
             with open(tsv, encoding="utf-8", errors="ignore") as f:
-                # 跳过 '#' 开头的注释行 (如 "# gene-model: GENCODE v36")
-                lines = (l for l in f if not l.startswith("#"))
-                reader = csv.DictReader(lines, delimiter="\t")
-                for row in reader:
-                    gn = row.get("gene_name", "")
+                # 手动解析 (不用csv模块, 避免 decoder 报错), 跳过 '#' 注释行
+                header = None
+                for line in f:
+                    if line.startswith("#"):
+                        continue
+                    header = line.rstrip("\r\n").split("\t")
+                    break
+                if header is None:
+                    continue
+                try:
+                    idx_gene = header.index("gene_name")
+                    idx_tpm = header.index("tpm_unstranded")
+                except ValueError:
+                    continue
+                for line in f:
+                    parts = line.rstrip("\r\n").split("\t")
+                    if len(parts) <= idx_tpm:
+                        continue
+                    gn = parts[idx_gene]
                     if gn in TARGET_GENES:
                         try:
-                            gene_tpm[gn] = float(row.get("tpm_unstranded", 0) or 0)
+                            gene_tpm[gn] = float(parts[idx_tpm])
                         except ValueError:
                             gene_tpm[gn] = 0.0
             for g in TARGET_GENES:
