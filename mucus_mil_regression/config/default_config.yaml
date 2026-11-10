@@ -9,6 +9,7 @@ project:
   version: "1.0.0"
   description: "弱监督MIL(ABMIL)回归 - 粘液分化复合分子得分预测"
   seed: 2026
+  task: "regression"        # regression | classification (粘液二分类)
 
 # ---- 上游WSI Patch数据 (复用wsi_patch_selection_benchmark输出, 上游代码不动) ----
 upstream:
@@ -26,6 +27,8 @@ data:
   label_csv: "data/mucus_pc1_labels.csv"          # EDA阶段生成 (PCA PC1标签)
   split_file: "data/splits/mucus_patient5fold.pkl"
   patient_id_col: "TCGA ID"
+  histology_col: "histological_type"              # 二分类标签来源列
+  mucinous_keyword: "mucinous"                    # 粘液关键字(不区分大小写)
   # 4个目标基因表达列 (PCA输入)
   genes: ["REG1A_rnaseq", "REG4_rnaseq", "SPINK4_rnaseq", "ITLN1_rnaseq"]
   # 临床协变量 (数值+分类)

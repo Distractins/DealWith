@@ -81,3 +81,10 @@ desktop.ini
 *.rar
 *.zip
 *.7z
+conda activate xcjenv
+
+
+# EDA输出表格
+data_feasibility_eda/output/tables/*.csv
+# EDA图片
+data_feasibility_eda/output/figures/*.png

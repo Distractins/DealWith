@@ -43,6 +43,8 @@ class DataConfig:
     label_csv: str = "data/mucus_pc1_labels.csv"
     split_file: str = "data/splits/mucus_patient5fold.pkl"
     patient_id_col: str = "TCGA ID"
+    histology_col: str = "histological_type"
+    mucinous_keyword: str = "mucinous"
     genes: List[str] = field(default_factory=lambda: ["REG1A_rnaseq", "REG4_rnaseq", "SPINK4_rnaseq", "ITLN1_rnaseq"])
     clinical_features: List[str] = field(default_factory=lambda: [
         "age_at_diagnosis", "gender", "tumor_stage", "t", "n", "m", "histological_type"
@@ -170,6 +172,7 @@ class ProjectConfig:
     name: str = "MucusMIL_Regression"
     version: str = "1.0.0"
     seed: int = 2026
+    task: str = "regression"      # regression | classification
 
 
 @dataclass

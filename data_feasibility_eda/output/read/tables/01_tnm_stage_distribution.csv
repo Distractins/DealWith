@@ -1,0 +1,35 @@
+﻿变量,取值,样本数
+tumor_stage,Stage IIA,40
+tumor_stage,Stage I,33
+tumor_stage,Stage IIIB,26
+tumor_stage,Stage IV,18
+tumor_stage,Stage IIIC,14
+tumor_stage,nan,11
+tumor_stage,Stage II,8
+tumor_stage,Stage IVA,7
+tumor_stage,Stage IIIA,7
+tumor_stage,Stage III,5
+tumor_stage,Stage IIB,2
+tumor_stage,Stage IIC,1
+t,T3,115
+t,T2,31
+t,T1,9
+t,T4a,8
+t,T4,5
+t,nan,3
+t,T4b,1
+n,N0,87
+n,N1,36
+n,N2,24
+n,N2b,7
+n,N1b,5
+n,N2a,4
+n,nan,3
+n,N1a,3
+n,NX,2
+n,N1c,1
+m,M0,130
+m,M1,22
+m,MX,14
+m,nan,4
+m,M1a,2

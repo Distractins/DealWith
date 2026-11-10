@@ -1,0 +1,9 @@
+﻿指标,值
+n_total,170.0
+n_event,9.0
+n_censored,161.0
+censoring_rate,0.9470588235294117
+epv,1.125
+logrank_p,
+cox_hr,
+cox_hr_p,

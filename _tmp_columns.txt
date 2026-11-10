@@ -1,0 +1,29 @@
+FILE: mucus_mil_regression/data/COAD_all_dataset.csv
+总列数: 14242
+[patient/id] 1列: TCGA ID
+[survival/event] 5列: event, censored, Survival months, vital_status_norm, survival_source
+[histology] 1列: histological_type
+[stage/tnm] 1列: tumor_stage
+[age/gender] 12列: age_at_diagnosis, gender, tumor_stage, MAGEC1_mut, MAGED2_rnaseq, MAGEF1_rnaseq, MAGED1_rnaseq, MAGEB17_rnaseq, MAGEH1_rnaseq, LAGE3_rnaseq, MAGEE1_rnaseq, AGER_rnaseq
+[rna/genes] 13679列: TSPAN6_rnaseq, TNMD_rnaseq, DPM1_rnaseq, SCYL3_rnaseq, C1orf112_rnaseq, FGR_rnaseq, CFH_rnaseq, FUCA2_rnaseq, GCLC_rnaseq, NFYA_rnaseq, STPG1_rnaseq, NIPAL3_rnaseq, ENPP4_rnaseq, SEMA3F_rnaseq, CFTR_rnaseq, ANKIB1_rnaseq, CYP51A1_rnaseq, KRIT1_rnaseq, RAD52_rnaseq, BAD_rnaseq, LAP3_rnaseq, CD99_rnaseq, HS3ST1_rnaseq, AOC1_rnaseq, LASP1_rnaseq, SNX11_rnaseq, TMEM176A_rnaseq, M6PR_rnaseq, KLHL13_rnaseq, CYP26B1_rnaseq, ICA1_rnaseq, DBNDD1_rnaseq, ALS2_rnaseq, CASP10_rnaseq, CFLAR_rnaseq, TFPI_rnaseq, NDUFAF7_rnaseq, RBM5_rnaseq, SLC7A2_rnaseq, ARF5_rnaseq
+  基因 REG1A: REG1A_rnaseq
+  基因 REG4: REG4_rnaseq
+  基因 SPINK4: SPINK4_rnaseq
+  基因 ITLN1: ITLN1_rnaseq
+  基因 OLFM4: OLFM4_rnaseq
+  基因 DEFA5: DEFA5_rnaseq
+
+FILE: DataProcessing/READ/READ_processed.csv
+总列数: 23
+[patient/id] 1列: TCGA ID
+[survival/event] 2列: event, Survival months
+[histology] 1列: histological_type
+[stage/tnm] 1列: tumor_stage
+[age/gender] 3列: age_at_diagnosis, gender, tumor_stage
+[rna/genes] 4列: REG1A_rnaseq, REG4_rnaseq, SPINK4_rnaseq, ITLN1_rnaseq
+  基因 REG1A: REG1A_rnaseq
+  基因 REG4: REG4_rnaseq
+  基因 SPINK4: SPINK4_rnaseq
+  基因 ITLN1: ITLN1_rnaseq
+  基因 OLFM4: (无)
+  基因 DEFA5: (无)

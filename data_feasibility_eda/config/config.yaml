@@ -1,0 +1,41 @@
+# ============================================================
+# data_feasibility_eda 配置
+# 路径相对仓库根 D:/xcjhhh/DealWith/ 解析
+# ============================================================
+
+# 目标粘液基因集 (按顺序)
+gene_list:
+  - "REG4_rnaseq"
+  - "OLFM4_rnaseq"
+  - "DEFA5_rnaseq"
+  - "ITLN1_rnaseq"
+  - "SPINK4_rnaseq"
+  - "REG1A_rnaseq"
+
+# 核心杯状细胞基因 (粘液特异), 用于对比"基因集选择"对信号的影响
+core_mucus_genes:
+  - "REG1A_rnaseq"
+  - "REG4_rnaseq"
+  - "SPINK4_rnaseq"
+  - "ITLN1_rnaseq"
+
+patient_id_col: "TCGA ID"
+histology_col: "histological_type"
+# 除 "mucinous" 关键字外, 额外视为粘液腺癌的 ICD-O-3 形态码
+mucinous_aliases: ["8480/3"]
+
+# 生存 Cox 的预测变量个数 (用于 EPV: events / predictors)
+survival_n_predictors: 8
+
+cohorts:
+  COAD:
+    csv: "mucus_mil_regression/data/COAD_all_dataset.csv"
+    gene_log1p: false            # 基因已是 log2 尺度, 不再变换
+    censored_col: "censored"     # 有独立删失列
+  READ:
+    csv: "DataProcessing/READ/READ_processed.csv"
+    gene_log1p: true             # 原始 TPM, 需 log1p
+    censored_col: null           # 无删失列, 由 event 推导 (1-event)
+
+output_dir: "output"
+report_path: "feasibility_report.md"

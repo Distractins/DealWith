@@ -58,6 +58,20 @@ def _build_patient_df(config, labels: pd.DataFrame, table: pd.DataFrame) -> pd.D
     return df
 
 
+def _build_classification_df(config, table: pd.DataFrame) -> pd.DataFrame:
+    """二分类: 从组织学列直接构造 0/1 标签 (粘液=1), 排除组织学列防止临床分支泄露。"""
+    pid = config.data.patient_id_col
+    hist = config.data.histology_col
+    kw = config.data.mucinous_keyword
+    table = table.copy()
+    table[pid] = table[pid].astype(str).str.strip()
+    clinical_cols = [c for c in config.data.clinical_features if c != hist]
+    df = table[[pid] + clinical_cols].copy()
+    df["y"] = table[hist].astype(str).str.lower().str.contains(kw).astype(float)
+    df = df.reset_index(drop=True)
+    return df
+
+
 def _build_fold_data(config, patient_df, pid_to_pos, patch_map, fold_data, clinical_encoder) -> Dict:
     """为一个fold构建 train/val/test 数据字典 (用整数位置索引, 避开pandas布尔索引)。"""
     pid_col = config.data.patient_id_col
@@ -110,6 +124,8 @@ def _build_fold_data(config, patient_df, pid_to_pos, patch_map, fold_data, clini
 
 def _load_or_build_splits(config, patient_ids, y) -> Dict:
     split_file = config.resolve_path(config.data.split_file)
+    if config.project.task == "classification":
+        split_file = split_file.with_name(f"{split_file.stem}_cls{split_file.suffix}")
     if split_file.exists():
         with open(split_file, "rb") as f:
             raw = pickle.load(f)
@@ -130,10 +146,14 @@ def _load_or_build_splits(config, patient_ids, y) -> Dict:
 
 
 def _build_all_data(config, logger) -> Dict:
-    labels = _load_labels(config)
     table = _load_table(config)
-    patient_df = _build_patient_df(config, labels, table)
-    logger.info(f"  有效病人(有PC1标签): {len(patient_df)}")
+    if config.project.task == "classification":
+        patient_df = _build_classification_df(config, table)
+        logger.info(f"  有效病人(有组织学标签): {len(patient_df)}")
+    else:
+        labels = _load_labels(config)
+        patient_df = _build_patient_df(config, labels, table)
+        logger.info(f"  有效病人(有PC1标签): {len(patient_df)}")
 
     pid_col = config.data.patient_id_col
     need_patches = config.model.model_type in ("image_mil", "multimodal")
@@ -183,9 +203,15 @@ def _run_tag(config) -> str:
     return f"{config.model.model_type}_{config.model.backbone}_{config.model.fusion_type}_{config.upstream.algorithm_name}"
 
 
+def _task_metrics(config) -> List[str]:
+    if config.project.task == "classification":
+        return ["auc", "acc", "f1", "sens", "spec"]
+    return config.evaluation.metrics
+
+
 def _save_results(config, fold_results, logger):
     results_dir = config.get_subdir("results")
-    metrics_list = config.evaluation.metrics
+    metrics_list = _task_metrics(config)
 
     rows = []
     patient_rows = []
@@ -292,7 +318,7 @@ def run_cross_validation(config) -> Dict:
     logger.info("=" * 70)
     logger.info("  交叉验证最终结果 (五折汇总)")
     logger.info("=" * 70)
-    for m in config.evaluation.metrics:
+    for m in _task_metrics(config):
         mean, std = _safe_mean_std([fr["metrics"].get(m) for fr in fold_results])
         if not np.isnan(mean):
             logger.info(f"  {m}: {mean:.4f} +/- {std:.4f}")

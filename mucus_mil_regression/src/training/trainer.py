@@ -29,6 +29,8 @@ from src.networks.image_mil_model import ImageMILModel
 from src.networks.multimodal_model import MultimodalModel
 from src.losses.regression_loss import mse_loss
 from src.evaluation.regression_metrics import regression_metrics
+from src.losses.classification_loss import bce_loss
+from src.evaluation.classification_metrics import classification_metrics
 
 
 # ============================================================
@@ -119,7 +121,7 @@ class MetricLogger:
 # 单轮训练
 # ============================================================
 
-def _train_one_epoch(model, loader, optimizer, scheduler, scaler, config, device):
+def _train_one_epoch(model, loader, optimizer, scheduler, scaler, config, device, pos_weight=None):
     model.train()
     accum = config.training.gradient_accumulation_steps
     use_amp = config.training.amp.enabled
@@ -138,7 +140,10 @@ def _train_one_epoch(model, loader, optimizer, scheduler, scaler, config, device
         amp_ctx = autocast("cuda", enabled=use_amp) if _AMP_NEW else autocast(enabled=use_amp)
         with amp_ctx:
             out, _attn = model(bag, clinical)
-            loss = mse_loss(out, y) / accum
+            if config.project.task == "classification":
+                loss = bce_loss(out, y, pos_weight=pos_weight) / accum
+            else:
+                loss = mse_loss(out, y) / accum
 
         # 统计 ARC 的注意力熵与门控权重 (仅 arc 融合, 供后续分析)
         if hasattr(model, "fusion") and hasattr(model.fusion, "last_entropy"):
@@ -226,8 +231,19 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
     scaler = GradScaler("cuda", enabled=use_amp) if _AMP_NEW else GradScaler(enabled=use_amp)
 
     monitor = config.training.early_stopping.monitor
+    if config.project.task == "classification":
+        monitor = "auc"
     mode = "min" if monitor == "loss" else "max"
     metric_logger = MetricLogger(monitor=monitor, mode=mode)
+
+    pos_weight = None
+    if config.project.task == "classification":
+        y_train = np.asarray(data["train"]["y"], dtype=np.float64)
+        n_pos = int((y_train == 1).sum())
+        n_neg = int((y_train == 0).sum())
+        if n_pos > 0 and n_neg > 0:
+            pos_weight = torch.tensor([n_neg / n_pos], dtype=torch.float32, device=device)
+        logger.info(f"  [分类] 正例={n_pos}, 负例={n_neg}, pos_weight={n_neg / n_pos:.2f}")
 
     run_tag = getattr(config, "run_tag", "default")
     ckpt_dir = config.get_subdir("ckpt") / run_tag / f"fold{fold_id}"
@@ -242,17 +258,21 @@ def train(config, data: Dict, device: torch.device, fold_id: int = 1):
                 f"{config.training.gradient_accumulation_steps}, monitor={monitor}")
 
     for epoch in range(start_epoch, n_epochs):
-        train_loss, avg_entropy, avg_w = _train_one_epoch(model, train_loader, optimizer, scheduler, scaler, config, device)
+        train_loss, avg_entropy, avg_w = _train_one_epoch(model, train_loader, optimizer, scheduler, scaler, config, device, pos_weight)
 
         val_score = None
         val_metrics = None
         if val_loader is not None:
             vp, vt, _ = _evaluate(model, val_loader, config, device)
             if len(vt) > 1:
-                val_metrics = regression_metrics(vp, vt)
-                val_score = val_metrics.get(monitor, val_metrics.get("spearman"))
-                if monitor == "loss":
-                    val_score = float(np.mean((vp - vt) ** 2))
+                if config.project.task == "classification":
+                    val_metrics = classification_metrics(vp, vt)
+                    val_score = val_metrics.get(monitor, val_metrics.get("auc"))
+                else:
+                    val_metrics = regression_metrics(vp, vt)
+                    val_score = val_metrics.get(monitor, val_metrics.get("spearman"))
+                    if monitor == "loss":
+                        val_score = float(np.mean((vp - vt) ** 2))
 
         if val_score is not None and not (isinstance(val_score, float) and np.isnan(val_score)):
             metric_logger.update(epoch + 1, val_score, model)
@@ -294,7 +314,11 @@ def test(config, model, data: Dict, split: str, device: torch.device) -> Dict:
     need_patches = config.model.model_type != "clinical_mlp"
     loader = build_dataloader(config, data, split=split, shuffle=False, need_patches=need_patches)
     preds, targets, attn = _evaluate(model, loader, config, device)
-    metrics = regression_metrics(preds, targets) if len(targets) > 1 else {}
+    if len(targets) > 1:
+        metrics = classification_metrics(preds, targets) if config.project.task == "classification" \
+            else regression_metrics(preds, targets)
+    else:
+        metrics = {}
     return {
         "preds": preds,
         "targets": targets,
