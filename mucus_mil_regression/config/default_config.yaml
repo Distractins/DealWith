@@ -17,7 +17,7 @@ upstream:
   # 9种采样算法: grid/stratified/sentinel/random/kmeans/yottixel/splice/sdm/largest_tissue
   algorithm_name: "grid"
   file_pattern: "{slide_base}_{idx}.png"
-  num_patches_per_patient: 6
+  num_patches_per_patient: 15
   patch_size: 224          # backbone输入尺寸 (resnet建议512, uni固定224)
 
 # ---- 数据路径 ----

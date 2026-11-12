@@ -19,7 +19,7 @@ only_dx1: true                               # Only process DX1 (diagnostic) sli
 # Patch extraction parameters
 # ---------------------------------------------------------------------------
 patch_size: 1024                             # Square patch side length in pixels
-patches_per_case: 32                         # K: target patches per patient case
+patches_per_case: 15                         # K: target patches per patient case
 stride: 1024                                 # Grid stride for candidate scanning
 ds_mask: 32                                  # Downsample factor for tissue mask
 
