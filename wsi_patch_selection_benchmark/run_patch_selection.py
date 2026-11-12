@@ -263,6 +263,13 @@ def main():
     )
     set_global_seed(config.seed)
 
+    # 解析 --only-case (单case模式, 供子进程隔离使用, 避免原生崩溃拖垮整批)
+    import argparse as _ap
+    _p = _ap.ArgumentParser(add_help=False)
+    _p.add_argument("--only-case", type=str, default=None)
+    _only, _ = _p.parse_known_args(sys.argv[1:])
+    only_case = _only.only_case
+
     logger.info("=" * 60)
     logger.info("WSI Patch Selection Benchmark")
     logger.info(f"Patch size: {config.patch_size}, K: {config.patches_per_case}")
@@ -334,6 +341,12 @@ def main():
 
     # 构建待处理病例列表（跳过全部算法均已完成的病例）
     case_list = list(case_to_slides.items())
+    if only_case:
+        case_list = [(cid, sp) for cid, sp in case_list if only_case in cid]
+        if not case_list:
+            logger.error(f"未找到匹配 --only-case 的 case: {only_case}")
+            sys.exit(1)
+        logger.info(f"单case模式: 只处理 {case_list[0][0]}")
     if config.max_cases > 0:
         case_list = case_list[:config.max_cases]
         logger.info(f"Limited to first {config.max_cases} case(s)")
@@ -385,6 +398,11 @@ def main():
             progress_data[key] = _case_result_to_dict(case_result)
 
         save_progress_json(progress_path, progress_data)
+
+    # 单case模式: 只负责切片+保存进度, 跳过末尾的指标/CSV/报告评估
+    if only_case:
+        logger.info(f"单case模式完成: {case_list[0][0]}")
+        return
 
     # ---- 6. 聚合统计 ----
     for algo_name, algo_result in all_results.items():
