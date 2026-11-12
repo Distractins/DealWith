@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import cv2
-import openslide
+from tiffslide import TiffSlide as OpenSlide
 
 from common.dataclasses import (
     CandidatePatch,
@@ -226,7 +226,7 @@ class CandidatePoolBuilder:
 
     def build(
         self,
-        slide: openslide.OpenSlide,
+        slide: OpenSlide,
         image_mask: np.ndarray,
         ds: int,
         slide_base: str,
@@ -381,7 +381,7 @@ class CandidatePoolBuilder:
 
     def build_random(
         self,
-        slide: openslide.OpenSlide,
+        slide: OpenSlide,
         image_mask: np.ndarray,
         ds: int,
         slide_base: str,
