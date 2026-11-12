@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import cv2
-from tiffslide import TiffSlide as OpenSlide
+import openslide
 
 from common.dataclasses import (
     CandidatePatch,
@@ -226,7 +226,7 @@ class CandidatePoolBuilder:
 
     def build(
         self,
-        slide: OpenSlide,
+        slide: openslide.OpenSlide,
         image_mask: np.ndarray,
         ds: int,
         slide_base: str,
@@ -237,7 +237,7 @@ class CandidatePoolBuilder:
         第二阶段: 读取高组织比例的图像碎片，计算质量指标和分数。
 
         Args:
-            slide: OpenSlide 对象。
+            slide: openslide.OpenSlide 对象。
             image_mask: 组织掩膜（来自 build_hybrid_tissue_mask）。
             ds: 掩膜的下采样因子。
             slide_base: 切片的基础名称。
@@ -381,7 +381,7 @@ class CandidatePoolBuilder:
 
     def build_random(
         self,
-        slide: OpenSlide,
+        slide: openslide.OpenSlide,
         image_mask: np.ndarray,
         ds: int,
         slide_base: str,
@@ -391,7 +391,7 @@ class CandidatePoolBuilder:
         从组织掩膜区域中随机采样位置，计算每个候选的质量指标和分数。
 
         Args:
-            slide: OpenSlide 对象。
+            slide: openslide.OpenSlide 对象。
             image_mask: 组织掩膜。
             ds: 下采样因子。
             slide_base: 切片的基础名称。

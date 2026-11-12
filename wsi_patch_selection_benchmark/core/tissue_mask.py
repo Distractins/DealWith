@@ -12,7 +12,7 @@ from typing import Tuple, Optional
 
 import numpy as np
 import cv2
-from tiffslide import TiffSlide as OpenSlide
+import openslide
 
 from utils.image_utils import rgb_to_od
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_hybrid_tissue_mask(
-    slide: OpenSlide,
+    slide: openslide.OpenSlide,
     downsample: int = 32,
 ) -> Tuple[np.ndarray, int]:
     """为WSI切片构建混合组织掩膜。
@@ -33,7 +33,7 @@ def build_hybrid_tissue_mask(
     然后应用形态学开/闭运算，并移除小于图像面积0.05%的小连通区域。
 
     Args:
-        slide: 一个OpenSlide对象。
+        slide: 一个openslide.OpenSlide对象。
         downsample: 掩膜的下采样因子（值越大越快，但越粗糙）。
 
     Returns:
